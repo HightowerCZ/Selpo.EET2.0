@@ -186,6 +186,10 @@ To publish a release:
 
 The release workflow requires a repository secret named `NUGET_API_KEY` containing a NuGet.org API key with push permissions for the `Selpo.EET2.0` package (create one under nuget.org → API Keys, scoped to this package, and add it under the repository's **Settings → Secrets and variables → Actions**).
 
+## Contributing
+
+Contributions are welcome via fork and pull request. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the workflow, coding conventions, and how to report issues.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/LICENSE).
