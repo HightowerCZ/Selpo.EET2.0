@@ -171,6 +171,21 @@ $env:EET_PLAYGROUND_CERTIFICATE_PASSWORD = "changeit"
 dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQualifiedName~PlaygroundIntegrationTests
 ```
 
+## CI/CD and releasing
+
+GitHub Actions workflows build, test, and publish the package:
+
+- **[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)** runs on every push and pull request to `main`: restores, builds, and tests the solution across both target frameworks, and packs the NuGet package (without publishing it) to validate that packing succeeds.
+- **[`.github/workflows/release.yml`](../../.github/workflows/release.yml)** publishes a new NuGet package to [NuGet.org](https://www.nuget.org/packages/Selpo.EET2.0) whenever a tag matching `v*.*.*` (e.g. `v0.1.0`) is pushed, or when run manually via `workflow_dispatch` with an explicit version. It builds and tests the solution, packs `Selpo.EET2.0.csproj` with the tag's version, uploads the `.nupkg` as a build artifact, and pushes it to NuGet.org.
+
+To publish a release:
+
+1. Update `VersionPrefix` in [`Selpo.EET2.0.csproj`](Selpo.EET2.0.csproj).
+2. Tag the commit, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+3. The `release` workflow builds, tests, packs, and pushes the package to NuGet.org automatically.
+
+The release workflow requires a repository secret named `NUGET_API_KEY` containing a NuGet.org API key with push permissions for the `Selpo.EET2.0` package (create one under nuget.org → API Keys, scoped to this package, and add it under the repository's **Settings → Secrets and variables → Actions**).
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/LICENSE).
