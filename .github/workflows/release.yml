@@ -1,0 +1,78 @@
+name: Release
+
+# Publishes Selpo.EET2.0 to NuGet.org.
+#
+# Trigger by pushing a tag matching v*.*.* (e.g. v0.1.0). The tag value (without the leading "v")
+# is used as the published NuGet package version, overriding <VersionPrefix> in the csproj.
+#
+# Requires a repository secret named NUGET_API_KEY containing a NuGet.org API key with push
+# permissions for the Selpo.EET2.0 package.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version to publish (e.g. 0.1.0). Required when run manually.'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-pack-publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}" -replace '^v', ''
+          }
+          Write-Host "Resolved package version: $version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore Selpo.EET2.0.sln
+
+      - name: Build
+        run: dotnet build Selpo.EET2.0.sln --configuration Release --no-restore -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Test
+        run: dotnet test Selpo.EET2.0.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/test-results.trx'
+
+      - name: Pack
+        run: dotnet pack src/Selpo.EET2.0/Selpo.EET2.0.csproj --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output ${{ runner.temp }}/nupkg
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-package
+          path: ${{ runner.temp }}/nupkg/*.nupkg
+
+      - name: Push to NuGet.org
+        run: dotnet nuget push "${{ runner.temp }}/nupkg/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

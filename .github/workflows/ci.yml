@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    # net481 requires the .NET Framework SDK/targeting pack, which is only preinstalled on Windows runners.
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Restore
+        run: dotnet restore Selpo.EET2.0.sln
+
+      - name: Build
+        run: dotnet build Selpo.EET2.0.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Selpo.EET2.0.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/test-results.trx'
+
+      - name: Pack (validation only)
+        run: dotnet pack src/Selpo.EET2.0/Selpo.EET2.0.csproj --configuration Release --no-build --output ${{ runner.temp }}/nupkg

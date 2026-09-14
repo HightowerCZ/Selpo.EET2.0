@@ -1,0 +1,25 @@
+## Build output
+bin/
+obj/
+Debug/
+Release/
+artifacts/
+packages/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+## Visual Studio and Rider
+.vs/
+.idea/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+## NuGet
+*.nupkg
+*.snupkg
