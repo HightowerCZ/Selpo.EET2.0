@@ -1,12 +1,13 @@
 # Selpo.EET2.0
 
+**🇬🇧 [English](#english) | 🇨🇿 [Čeština](#čeština)**
+
+<a id="english"></a>
+## English
+
 `Selpo.EET2.0` is a .NET connector for integrating applications with the Czech Ministry of Finance EET 2.0 service.
 
 The package targets both .NET Framework 4.8.1 and .NET 10.
-
-## Status
-
-The core EET 2.0 protocol implementation is in place: message serialization, XML signing (XAdES), SOAP envelope construction, transport, and response parsing are implemented and covered by unit tests. The public API may still evolve as more of the official EET 2.0 technical specification is validated against the tax authority playground.
 
 ## Target framework
 
@@ -171,21 +172,6 @@ $env:EET_PLAYGROUND_CERTIFICATE_PASSWORD = "changeit"
 dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQualifiedName~PlaygroundIntegrationTests
 ```
 
-## CI/CD and releasing
-
-GitHub Actions workflows build, test, and publish the package:
-
-- **[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)** runs on every push and pull request to `main`: restores, builds, and tests the solution across both target frameworks, and packs the NuGet package (without publishing it) to validate that packing succeeds.
-- **[`.github/workflows/release.yml`](../../.github/workflows/release.yml)** publishes a new NuGet package to [NuGet.org](https://www.nuget.org/packages/Selpo.EET2.0) whenever a tag matching `v*.*.*` (e.g. `v0.1.0`) is pushed, or when run manually via `workflow_dispatch` with an explicit version. It builds and tests the solution, packs `Selpo.EET2.0.csproj` with the tag's version, uploads the `.nupkg` as a build artifact, and pushes it to NuGet.org.
-
-To publish a release:
-
-1. Update `VersionPrefix` in [`Selpo.EET2.0.csproj`](Selpo.EET2.0.csproj).
-2. Tag the commit, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
-3. The `release` workflow builds, tests, packs, and pushes the package to NuGet.org automatically.
-
-The release workflow requires a repository secret named `NUGET_API_KEY` containing a NuGet.org API key with push permissions for the `Selpo.EET2.0` package (create one under nuget.org → API Keys, scoped to this package, and add it under the repository's **Settings → Secrets and variables → Actions**).
-
 ## Contributing
 
 Contributions are welcome via fork and pull request. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the workflow, coding conventions, and how to report issues.
@@ -193,3 +179,185 @@ Contributions are welcome via fork and pull request. See [CONTRIBUTING.md](../..
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/LICENSE).
+
+---
+
+<a id="čeština"></a>
+## Čeština
+
+`Selpo.EET2.0` je .NET konektor pro integraci aplikací se službou EET 2.0 (Elektronická evidence tržeb) Ministerstva financí ČR.
+
+Balíček cílí jak na .NET Framework 4.8.1, tak na .NET 10.
+
+
+### Cílová platforma
+
+- .NET Framework 4.8.1 (`net481`)
+- .NET 10 (`net10.0`)
+
+### Instalace
+
+```bash
+dotnet add package Selpo.EET2.0
+```
+
+### Příklad použití
+
+```csharp
+using Selpo.Eet20;
+
+using var client = new EetClient(new EetClientOptions
+{
+    BaseAddress = "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
+    SigningCertificatePath = @"C:\certs\playground.p12",
+    SigningCertificatePassword = "changeit",
+    UseSystemCertificateTrust = true
+});
+
+var response = await client.RegisterSaleAsync(new RegisteredSale
+{
+    Eic = "CZ8551015704",
+    UnitId = 181,
+    PosId = "00/2535/CN58",
+    TransactionNumber = "2024-0001",
+    SubmissionTime = DateTimeOffset.Now,
+    TransactionTime = DateTimeOffset.Now,
+    TotalAmount = 236.00m,
+    VerificationMode = false,
+    FirstSubmission = true
+});
+
+switch (response)
+{
+    case EetAcknowledgementResponse ack:
+        Console.WriteLine($"Přijato. FIK/POK: {ack.Pok}, přijato v: {ack.ReceivedAt}");
+        break;
+    case EetErrorResponse error:
+        Console.WriteLine($"Zamítnuto. Chyba {error.ErrorCode}: {error.ErrorMessage}");
+        break;
+}
+```
+
+- `BaseAddress` výše míří na playground endpoint EET; pro ostrý provoz použijte produkční endpoint `https://prod.eet.cz:443/eet/services/EETServiceSOAP/v4`. Kompletní WSDL/XSD kontrakt pro obě prostředí je dostupný ve složce [`docs/protocol`](../../docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
+- `SigningCertificate`/`SigningCertificatePath` slouží k zadání certifikátu, kterým se zpráva podepisuje; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (nebo jejich ekvivalenty typu `X509Certificate2`) lze použít k připnutí certifikátů autority místo spoléhání se na `UseSystemCertificateTrust`.
+- `RegisterSaleAsync` vyhazuje `EetValidationException` při neplatném vstupu, `EetProtocolException` při SOAP fault odpovědi a `EetTransportException` při chybách na úrovni síťového přenosu.
+
+#### Produkční DNS a dlouhotrvající připojení
+
+Produkční endpoint EET běží za DNS řízenou vysoce dostupnou infrastrukturou a jeho DNS záznam se může v čase měnit (např. při údržbě infrastruktury Ministerstva financí). Když `EetClient(EetClientOptions)` vytváří vlastní `HttpClient`, omezuje životnost poolovaných připojení pomocí `EetClientOptions.HttpConnectionLifetime` (výchozí hodnota 5 minut), aby dlouhoběžící služby pravidelně znovu přeřešily DNS místo toho, aby zůstaly připnuté ke staré adrese. Pokud dodáváte vlastní `HttpClient` přes `EetClient(HttpClient, EetClientOptions)`, nastavte si podobnou životnost připojení sami (např. `SocketsHttpHandler.PooledConnectionLifetime` na .NET, nebo `ServicePoint.ConnectionLeaseTimeout`/`ServicePointManager.DnsRefreshTimeout` na .NET Frameworku).
+
+### Automatické opakované odeslání při dočasných chybách
+
+Služba EET 2.0 může odpovědět chybovým kódem `-1` ("dočasná technická chyba zpracování - odešlete prosím datovou zprávu znovu později"). `EetClient` umí v takovém případě tržbu automaticky znovu odeslat:
+
+```csharp
+using var client = new EetClient(new EetClientOptions
+{
+    BaseAddress = "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
+    SigningCertificatePath = @"C:\certs\playground.p12",
+    SigningCertificatePassword = "changeit",
+    EnableAutomaticResend = true,
+    ResendDelays = new[] { TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30) },
+    OnResendAttempt = attempt =>
+    {
+        if (attempt.IsFinalAttempt)
+        {
+            // Všechny pokusy o opakované odeslání byly vyčerpány a tržba stále není zaevidována.
+            // Zde upozorněte operátora / alerting systém, aby bylo možné tržbu vyřešit manuálně.
+            Console.Error.WriteLine($"Tržba stále nezaevidována po {attempt.AttemptNumber} pokusech.");
+        }
+        else
+        {
+            Console.WriteLine($"Pokus {attempt.AttemptNumber}/{attempt.MaxAttempts} selhal s dočasnou chybou, opakuji za {attempt.Delay}.");
+        }
+    }
+});
+```
+
+- `EnableAutomaticResend` je ve výchozím stavu `false`; knihovna sama od sebe nikdy neodesílá opakovaně, pokud si to výslovně nevyžádáte.
+- `ResendDelays` knihovna **neposkytuje** - harmonogram (prodlevu před každým opakovaným pokusem) musíte explicitně dodat vy. Počet položek omezuje maximální počet automatických opakování (např. tři prodlevy umožní až tři opakování po prvotním pokusu). Zapnutí `EnableAutomaticResend` bez `ResendDelays` vyvolá `InvalidOperationException`.
+- Každé opakované odeslání používá nově vygenerované UUID zprávy a `FirstSubmission = false`, v souladu se specifikací EET 2.0 pro opakovaná podání.
+- `OnResendAttempt` se volá po každém pokusu o opakované odeslání, včetně posledního, pokud je harmonogram vyčerpán a chyba přetrvává (`IsFinalAttempt == true`) - využijte to k logování nebo upozornění, aby trvale selhávající tržba nezůstala bez povšimnutí. `RegisterSaleAsync` v takovém případě volajícímu stále vrátí finální `EetErrorResponse`.
+- Automatické opakování pokrývá pouze dočasné chyby na úrovni EET (chybový kód `-1`). Pokud samotný pokus o opakované odeslání selže s výjimkou na úrovni transportu, protokolu nebo podpisu (např. výpadek sítě nebo prošlý certifikát), tato výjimka se okamžitě propaguje z `RegisterSaleAsync` a harmonogram opakování se opouští - neopakuje se a `OnResendAttempt` se pro tento pokus nevolá.
+
+### Diagnostika
+
+`EetClientOptions.OnDiagnosticEvent` je odlehčený hook bez závislostí pro sledování životního cyklu požadavku, aniž byste museli zavádět závislost na logovacím frameworku.
+
+- `Sending` - zpráva se chystá být odeslána (nebo znovu odeslána) službě EET.
+- `ResponseReceived` - zpráva byla na úrovni protokolu EET úspěšně potvrzena nebo zamítnuta.
+- `ResendScheduled` - dočasná chyba (kód `-1`) vyvolala naplánování automatického opakovaného odeslání.
+- `Failed` - operace selhala s výjimkou na úrovni transportu, protokolu nebo podpisu; `EetDiagnosticEvent.Exception` obsahuje danou chybu.
+
+```csharp
+options.OnDiagnosticEvent = e => logger.LogInformation("[{Kind}] {MessageId}: {Message}", e.Kind, e.MessageId, e.Message);
+```
+
+### Ověření konfigurace
+
+Dvě doplňující se kontroly pomáhají odhalit chyby konfigurace ještě před odesláním skutečných tržeb:
+
+- `EetClientOptions.Validate()` provádí lokální, offline kontroly (bez síťového volání): endpoint je absolutní HTTPS URL, podpisový certifikát je nastaven, načtitelný s privátním klíčem a aktuálně platný, případné připnuté cesty k certifikátům autority existují, nastavení opakovaného odesílání je konzistentní a `HttpConnectionLifetime` je kladné. Vyhazuje `EetValidationException` se seznamem všech nalezených problémů.
+- `EetClient.TestConnectionAsync()` provádí skutečný síťový round-trip: odešle podepsanou zprávu v ověřovacím režimu (`RegisteredSale.VerificationMode = true`, kterou služba EET nikdy nezaeviduje) na nakonfigurovaný endpoint a vrátí `EetConnectionTestResult`. Tím se kromě podepisování ověří i důvěryhodnost TLS/certifikátu a dostupnost endpointu. Jak úspěšné potvrzení, tak zamítnutí na úrovni EET se počítají jako úspěch, protože obojí znamená, že požadavek dorazil ke službě a byl zpracován; jako neúspěch se hlásí pouze chyby na úrovni transportu, protokolu nebo podpisu. `TestConnectionAsync` u těchto očekávaných způsobů selhání - včetně neočekávaných HTTP nebo transportních chyb - nikdy nevyhazuje výjimku a vždy vrátí `EetConnectionTestResult` popisující výsledek (pokud není zrušen předaný `CancellationToken`).
+
+`EetClientOptions.RevocationMode` řídí, jak se při ověřování podpisu potvrzení kontroluje odvolání certifikátu v řetězu certifikační autority (výchozí hodnota `X509RevocationMode.Online`, stejně jako výchozí chování .NET). V offline/izolovaných prostředích, kde nejsou dostupné CRL/OCSP endpointy, nastavte `X509RevocationMode.NoCheck`, nebo `X509RevocationMode.Offline` pro spolehnutí se na lokálně uloženou CRL.
+
+```csharp
+var options = new EetClientOptions
+{
+    BaseAddress = "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
+    SigningCertificatePath = @"C:\certs\playground.p12",
+    SigningCertificatePassword = "changeit",
+    UseSystemCertificateTrust = true
+};
+
+// Rychlé selhání při zjevné chybné konfiguraci bez jakéhokoli síťového přístupu.
+options.Validate();
+
+using var client = new EetClient(options);
+
+// Ověří skutečný endpoint, důvěryhodnost TLS a podepisování certifikátem.
+var testResult = await client.TestConnectionAsync();
+if (!testResult.IsSuccess)
+{
+    Console.Error.WriteLine($"Test připojení k EET selhal: {testResult.Message}");
+}
+```
+
+### Lokální build
+
+```bash
+dotnet restore src/Selpo.EET2.0/Selpo.EET2.0.csproj
+dotnet build src/Selpo.EET2.0/Selpo.EET2.0.csproj --configuration Release
+dotnet pack src/Selpo.EET2.0/Selpo.EET2.0.csproj --configuration Release
+```
+
+### Testování
+
+Sada jednotkových testů (`tests/Selpo.EET2.0.Tests`) pokrývá serializaci, XML podepisování, sestavení SOAP obálky, zpracování odpovědí, orchestraci opakovaného odesílání, zpracování chyb transportu a validaci konfigurace (`EetClientOptions.Validate()`, `EetClient.TestConnectionAsync()`) pomocí simulovaného HTTP transportu - není potřeba žádný síťový přístup ani přihlašovací údaje.
+
+`PlaygroundIntegrationTests` navíc end-to-end ověřují skutečný playground endpoint EET (`pg.trzbyeet.gov.cz`): odeslání tržby v ověřovacím režimu, spuštění `EetClientOptions.Validate()` a spuštění `EetClient.TestConnectionAsync()` proti němu. Tyto testy jsou volitelné (opt-in) a bez nastavení níže uvedených proměnných prostředí se přeskočí, takže se nikdy nespustí neúmyslně v CI nebo na vývojářském stroji bez playground přihlašovacích údajů:
+
+| Proměnná | Povinná | Popis |
+| --- | --- | --- |
+| `EET_RUN_PLAYGROUND` | Ano | Musí být `true` pro povolení playground testů. |
+| `EET_PLAYGROUND_CERTIFICATE_PATH` | Ano | Cesta k `.p12`/`.pfx` playground podpisovému certifikátu. |
+| `EET_PLAYGROUND_CERTIFICATE_PASSWORD` | Ano | Heslo k podpisovému certifikátu. |
+| `EET_PLAYGROUND_ROOT_CERTIFICATE_PATH` | Ne | Cesta k připnutému kořenovému certifikátu playground; bez zadání se použije důvěryhodné úložiště OS. |
+| `EET_PLAYGROUND_INTERMEDIATE_CERTIFICATE_PATH` | Ne | Cesta k připnutému mezilehlému certifikátu playground. |
+
+```bash
+$env:EET_RUN_PLAYGROUND = "true"
+$env:EET_PLAYGROUND_CERTIFICATE_PATH = "C:\certs\playground.p12"
+$env:EET_PLAYGROUND_CERTIFICATE_PASSWORD = "changeit"
+dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQualifiedName~PlaygroundIntegrationTests
+```
+
+### Přispívání
+
+Příspěvky jsou vítány formou forku a pull requestu. Postup, konvence psaní kódu a způsob nahlašování problémů najdete v [CONTRIBUTING.md](../../CONTRIBUTING.md).
+
+### Licence
+
+Tento projekt je licencován pod MIT licencí. Viz [LICENSE](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/LICENSE).
+
