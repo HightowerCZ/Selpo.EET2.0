@@ -1,12 +1,13 @@
 name: Release
 
-# Publishes Selpo.EET2.0 to NuGet.org.
+# Publishes Selpo.EET2.0 to NuGet.org using Trusted Publishing (OIDC) - no long-lived API key secret.
 #
 # Trigger by pushing a tag matching v*.*.* (e.g. v0.1.0). The tag value (without the leading "v")
 # is used as the published NuGet package version, overriding <VersionPrefix> in the csproj.
 #
-# Requires a repository secret named NUGET_API_KEY containing a NuGet.org API key with push
-# permissions for the Selpo.EET2.0 package.
+# Requires a Trusted Publishing policy configured on nuget.org for this repository, workflow file
+# (release.yml) and the "release" environment, plus a repository/environment variable named
+# NUGET_USER containing the nuget.org username (profile name) that owns the policy.
 
 on:
   push:
@@ -24,6 +25,10 @@ permissions:
 jobs:
   build-test-pack-publish:
     runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write # required to request the OIDC token exchanged for a short-lived NuGet API key
 
     steps:
       - name: Checkout
@@ -74,5 +79,11 @@ jobs:
           name: nuget-package
           path: ${{ runner.temp }}/nupkg/*.nupkg
 
+      - name: NuGet login (OIDC -> temp API key)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push to NuGet.org
-        run: dotnet nuget push "${{ runner.temp }}/nupkg/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push "${{ runner.temp }}/nupkg/*.nupkg" --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
