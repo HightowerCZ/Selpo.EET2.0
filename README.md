@@ -368,9 +368,23 @@ $env:EET_PLAYGROUND_CERTIFICATE_PASSWORD = "changeit"
 dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQualifiedName~PlaygroundIntegrationTests
 ```
 
+### Známá omezení
+
+- Implementován je pouze tok `RegisterSale`/potvrzení EET 2.0 popsaný [WSDL/XSD kontraktem](docs/protocol); ostatní webové služby Ministerstva financí nejsou pokryty.
+- Knihovna cílí pouze na `net481` a `net10.0`; jiné cílové platformy nejsou aktuálně podporovány (viz [CONTRIBUTING.md](CONTRIBUTING.md), pokud chcete navrhnout přidání další).
+- Automatické opakování pokrývá pouze dočasné chyby na úrovni EET (chybový kód `-1`); chyby transportu, protokolu a podepisování se automaticky nikdy neopakují (viz [Automatické opakované odeslání při dočasných chybách](#automatické-opakované-odeslání-při-dočasných-chybách)).
+
+### Verzování a podpora
+
+Tento projekt dodržuje [sémantické verzování](https://semver.org/lang/cs/). Vydání se publikují z tagovaných commitů na `main`; changelog jednotlivých verzí najdete na stránce [GitHub Releases](https://github.com/HightowerCZ/Selpo.EET2.0/releases). Jako balíček `0.x` mohou i minoritní verze obsahovat nekompatibilní změny až do verze `1.0.0` - před aktualizací si vždy přečtěte poznámky k vydání.
+
 ### Přispívání
 
 Příspěvky jsou vítány formou forku a pull requestu. Postup, konvence psaní kódu a způsob nahlašování problémů najdete v [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Nahlašování problémů
+
+Našli jste chybu nebo máte návrh na novou funkci? [Založte prosím issue na GitHubu](https://github.com/HightowerCZ/Selpo.EET2.0/issues). Bezpečnostně citlivé nálezy (např. týkající se práce s certifikáty nebo podepisování) prosím nezveřejňujte jako veřejné issue - postup pro přímý kontakt s maintainerem najdete v [CONTRIBUTING.md](CONTRIBUTING.md#security).
 
 ### Licence
 
