@@ -7,11 +7,10 @@
 
 `Selpo.EET2.0` is a .NET connector for integrating applications with the Czech Ministry of Finance EET 2.0 service.
 
-The package targets .NET Standard 2.0, .NET Framework 4.8.1, and .NET 10.
+The package targets both .NET Framework 4.8.1 and .NET 10.
 
 ### Target framework
 
-- .NET Standard 2.0 (`netstandard2.0`), compatible with .NET Framework 4.6.1+ and .NET Core 2.0+
 - .NET Framework 4.8.1 (`net481`)
 - .NET 10 (`net10.0`)
 
@@ -154,7 +153,7 @@ dotnet pack src/Selpo.EET2.0/Selpo.EET2.0.csproj --configuration Release
 
 ### Testing
 
-The unit test suite
+The unit test suite (`tests/Selpo.EET2.0.Tests`) covers serialization, XML signing, SOAP envelope construction, response parsing, resend orchestration, transport error handling, and configuration validation (`EetClientOptions.Validate()`, `EetClient.TestConnectionAsync()`) using a simulated HTTP transport - no network access or credentials required.
 
 `PlaygroundIntegrationTests` additionally exercises the real EET playground endpoint (`pg.trzbyeet.gov.cz`) end-to-end: submitting a verification-mode sale, running `EetClientOptions.Validate()`, and running `EetClient.TestConnectionAsync()` against it. These tests are opt-in and no-op unless the following environment variables are set, so they never run unintentionally in CI or on a developer machine without playground credentials:
 
@@ -173,9 +172,23 @@ $env:EET_PLAYGROUND_CERTIFICATE_PASSWORD = "changeit"
 dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQualifiedName~PlaygroundIntegrationTests
 ```
 
+### Known limitations
+
+- Only the EET 2.0 `RegisterSale`/acknowledgement flow described by the [WSDL/XSD contract](docs/protocol) is implemented; no other Ministry of Finance web services are covered.
+- The library targets `net481` and `net10.0` only; other target frameworks are not currently supported (see [CONTRIBUTING.md](CONTRIBUTING.md) if you need to propose adding one).
+- Automatic resend only covers EET-level temporary errors (error code `-1`); transport, protocol, and signing failures are never retried automatically (see [Automatic resend on temporary errors](#automatic-resend-on-temporary-errors)).
+
+### Versioning and support
+
+This project follows [Semantic Versioning](https://semver.org/). Releases are published from tagged commits on `main`; see the [GitHub Releases](https://github.com/HightowerCZ/Selpo.EET2.0/releases) page for the changelog of each version. As a `0.x` package, breaking changes may still occur in minor versions until `1.0.0`; check release notes before upgrading.
+
 ### Contributing
 
-Contributions are welcome
+Contributions are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and coding conventions.
+
+### Reporting issues
+
+Found a bug or have a feature request? Please [open a GitHub issue](https://github.com/HightowerCZ/Selpo.EET2.0/issues). For security-sensitive reports (e.g. certificate handling or signing), do not open a public issue - see [CONTRIBUTING.md](CONTRIBUTING.md#security) for how to contact the maintainer directly.
 
 ### License
 
