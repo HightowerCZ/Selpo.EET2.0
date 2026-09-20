@@ -7,10 +7,11 @@
 
 `Selpo.EET2.0` is a .NET connector for integrating applications with the Czech Ministry of Finance EET 2.0 service.
 
-The package targets both .NET Framework 4.8.1 and .NET 10.
+The package targets .NET Standard 2.0, .NET Framework 4.8.1, and .NET 10.
 
 ### Target framework
 
+- .NET Standard 2.0 (`netstandard2.0`), compatible with .NET Framework 4.6.1+ and .NET Core 2.0+
 - .NET Framework 4.8.1 (`net481`)
 - .NET 10 (`net10.0`)
 
