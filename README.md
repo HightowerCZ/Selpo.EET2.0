@@ -58,7 +58,7 @@ switch (response)
 }
 ```
 
-The full WSDL/XSD contract for both environments is available under [`docs/protocol`](docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
+The full WSDL/XSD contract for both environments is available under [`docs/protocol`](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
 - `SigningCertificate`/`SigningCertificatePath` provide the certificate used to sign the message; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (or their `X509Certificate2` equivalents) can be used to pin the authority's certificates instead of relying on `UseSystemCertificateTrust`.
 - `RegisterSaleAsync` throws `EetValidationException` for invalid input, `EetProtocolException` for SOAP fault responses, and `EetTransportException` for network-level failures.
 
@@ -175,21 +175,25 @@ dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQua
 
 ### Known limitations
 
-- Only the EET 2.0 `RegisterSale`/acknowledgement flow described by the [WSDL/XSD contract](docs/protocol) is implemented; no other Ministry of Finance web services are covered.
-- The library targets `net481` and `net10.0` only; other target frameworks are not currently supported (see [CONTRIBUTING.md](CONTRIBUTING.md) if you need to propose adding one).
+- Only the EET 2.0 `RegisterSale`/acknowledgement flow described by the [WSDL/XSD contract](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol) is implemented; no other Ministry of Finance web services are covered.
+- The library targets `netstandard2.0`, `net481`, and `net10.0`; other target frameworks are not currently supported (see [CONTRIBUTING.md](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/CONTRIBUTING.md) if you need to propose adding one).
 - Automatic resend only covers EET-level temporary errors (error code `-1`); transport, protocol, and signing failures are never retried automatically (see [Automatic resend on temporary errors](#automatic-resend-on-temporary-errors)).
 
 ### Versioning and support
 
 This project follows [Semantic Versioning](https://semver.org/). Releases are published from tagged commits on `main`; see the [GitHub Releases](https://github.com/HightowerCZ/Selpo.EET2.0/releases) page for the changelog of each version. As a `0.x` package, breaking changes may still occur in minor versions until `1.0.0`; check release notes before upgrading.
 
+### Development note
+
+Parts of this project were developed with assistance from AI tools. All generated suggestions were reviewed, adapted, and validated by the project maintainer.
+
 ### Contributing
 
-Contributions are welcome - see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and coding conventions.
+Contributions are welcome - see [CONTRIBUTING.md](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/CONTRIBUTING.md) for the workflow and coding conventions.
 
 ### Reporting issues
 
-Found a bug or have a feature request? Please [open a GitHub issue](https://github.com/HightowerCZ/Selpo.EET2.0/issues). For security-sensitive reports (e.g. certificate handling or signing), do not open a public issue - see [CONTRIBUTING.md](CONTRIBUTING.md#security) for how to contact the maintainer directly.
+Found a bug or have a feature request? Please [open a GitHub issue](https://github.com/HightowerCZ/Selpo.EET2.0/issues). For security-sensitive reports (e.g. certificate handling or signing), do not open a public issue - see [CONTRIBUTING.md](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/CONTRIBUTING.md#security) for how to contact the maintainer directly.
 
 ### License
 
@@ -254,7 +258,7 @@ switch (response)
 }
 ```
 
-Kompletní WSDL/XSD kontrakt pro obě prostředí je dostupný ve složce [`docs/protocol`](docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
+Kompletní WSDL/XSD kontrakt pro obě prostředí je dostupný ve složce [`docs/protocol`](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
 - `SigningCertificate`/`SigningCertificatePath` slouží k zadání certifikátu, kterým se zpráva podepisuje; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (nebo jejich ekvivalenty typu `X509Certificate2`) lze použít k připnutí certifikátů autority místo spoléhání se na `UseSystemCertificateTrust`.
 - `RegisterSaleAsync` vyhazuje `EetValidationException` při neplatném vstupu, `EetProtocolException` při SOAP fault odpovědi a `EetTransportException` při chybách na úrovni síťového přenosu.
 
@@ -371,21 +375,25 @@ dotnet test tests/Selpo.EET2.0.Tests/Selpo.EET2.0.Tests.csproj --filter FullyQua
 
 ### Známá omezení
 
-- Implementován je pouze tok `RegisterSale`/potvrzení EET 2.0 popsaný [WSDL/XSD kontraktem](docs/protocol); ostatní webové služby Ministerstva financí nejsou pokryty.
-- Knihovna cílí pouze na `net481` a `net10.0`; jiné cílové platformy nejsou aktuálně podporovány (viz [CONTRIBUTING.md](CONTRIBUTING.md), pokud chcete navrhnout přidání další).
+- Implementován je pouze tok `RegisterSale`/potvrzení EET 2.0 popsaný [WSDL/XSD kontraktem](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol); ostatní webové služby Ministerstva financí nejsou pokryty.
+- Knihovna cílí na `netstandard2.0`, `net481` a `net10.0`; jiné cílové platformy nejsou aktuálně podporovány (viz [CONTRIBUTING.md](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/CONTRIBUTING.md), pokud chcete navrhnout přidání další).
 - Automatické opakování pokrývá pouze dočasné chyby na úrovni EET (chybový kód `-1`); chyby transportu, protokolu a podepisování se automaticky nikdy neopakují (viz [Automatické opakované odeslání při dočasných chybách](#automatické-opakované-odeslání-při-dočasných-chybách)).
 
 ### Verzování a podpora
 
 Tento projekt dodržuje [sémantické verzování](https://semver.org/lang/cs/). Vydání se publikují z tagovaných commitů na `main`; changelog jednotlivých verzí najdete na stránce [GitHub Releases](https://github.com/HightowerCZ/Selpo.EET2.0/releases). Jako balíček `0.x` mohou i minoritní verze obsahovat nekompatibilní změny až do verze `1.0.0` - před aktualizací si vždy přečtěte poznámky k vydání.
 
+### Poznámka k vývoji
+
+Části tohoto projektu vznikly s pomocí AI nástrojů. Všechny vygenerované návrhy byly zkontrolovány, upraveny a ověřeny maintainerem projektu.
+
 ### Přispívání
 
-Příspěvky jsou vítány formou forku a pull requestu. Postup, konvence psaní kódu a způsob nahlašování problémů najdete v [CONTRIBUTING.md](CONTRIBUTING.md).
+Příspěvky jsou vítány formou forku a pull requestu. Postup, konvence psaní kódu a způsob nahlašování problémů najdete v [CONTRIBUTING.md](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/CONTRIBUTING.md).
 
 ### Nahlašování problémů
 
-Našli jste chybu nebo máte návrh na novou funkci? [Založte prosím issue na GitHubu](https://github.com/HightowerCZ/Selpo.EET2.0/issues). Bezpečnostně citlivé nálezy (např. týkající se práce s certifikáty nebo podepisování) prosím nezveřejňujte jako veřejné issue - postup pro přímý kontakt s maintainerem najdete v [CONTRIBUTING.md](CONTRIBUTING.md#security).
+Našli jste chybu nebo máte návrh na novou funkci? [Založte prosím issue na GitHubu](https://github.com/HightowerCZ/Selpo.EET2.0/issues). Bezpečnostně citlivé nálezy (např. týkající se práce s certifikáty nebo podepisování) prosím nezveřejňujte jako veřejné issue - postup pro přímý kontakt s maintainerem najdete v [CONTRIBUTING.md](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/CONTRIBUTING.md#security).
 
 ### Licence
 

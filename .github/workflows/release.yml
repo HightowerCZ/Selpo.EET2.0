@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   build-test-pack-publish:
+    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
     runs-on: windows-latest
     environment: release
     permissions:
@@ -42,6 +43,14 @@ jobs:
           dotnet-version: |
             10.0.x
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'global.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Resolve version
         id: version
         shell: pwsh
@@ -51,8 +60,8 @@ jobs:
           } else {
             $version = "${{ github.ref_name }}" -replace '^v', ''
           }
-          # Reject anything that isn't a valid, non-prerelease-by-accident SemVer version.
-          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$') {
+          # Reject versions that do not follow SemVer 2.0.
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-(0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$') {
             Write-Error "Version '$version' is not a valid SemVer version (expected e.g. 1.2.3 or 1.2.3-beta.1)."
             exit 1
           }
