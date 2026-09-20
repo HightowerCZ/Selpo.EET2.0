@@ -79,7 +79,7 @@ jobs:
 
       - name: Publish test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: '**/test-results.trx'
@@ -88,7 +88,7 @@ jobs:
         run: dotnet pack src/Selpo.EET2.0/Selpo.EET2.0.csproj --configuration Release --no-build -p:Version=${{ steps.version.outputs.version }} --output ${{ runner.temp }}/nupkg
 
       - name: Upload package artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-package
           path: |
