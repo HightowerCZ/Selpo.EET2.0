@@ -37,6 +37,8 @@ public sealed class EetClient : IDisposable
     }
 
     /// <summary>Initializes a client using an application HTTP client and EET options.</summary>
+    /// <param name="httpClient">HTTP client configured and owned by the application.</param>
+    /// <param name="options">Client configuration.</param>
     public EetClient(HttpClient httpClient, EetClientOptions options)
         : this(httpClient, disposeHttpClient: false, options)
     {
@@ -69,6 +71,9 @@ public sealed class EetClient : IDisposable
     /// callers can observe and handle the failure.
     /// </para>
     /// </summary>
+    /// <param name="sale">Sale data to validate, sign, and submit.</param>
+    /// <param name="cancellationToken">Token used to cancel the HTTP request or an automatic resend delay.</param>
+    /// <returns>The acknowledgement or error response returned by the EET service.</returns>
     public async Task<EetResponse> RegisterSaleAsync(RegisteredSale sale, CancellationToken cancellationToken = default)
     {
         if (sale == null) throw new ArgumentNullException(nameof(sale));
@@ -116,6 +121,8 @@ public sealed class EetClient : IDisposable
     /// that transport, TLS trust, and message signing are working; only transport-level, protocol-level, or
     /// signing failures are reported as an unsuccessful result.
     /// </summary>
+    /// <param name="cancellationToken">Token used to cancel the connection test.</param>
+    /// <returns>A result describing whether the signed verification request reached the EET service.</returns>
     public async Task<EetConnectionTestResult> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         var options = _options ?? throw new InvalidOperationException("TestConnectionAsync requires EetClientOptions.");

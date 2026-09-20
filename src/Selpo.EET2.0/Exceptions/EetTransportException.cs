@@ -7,6 +7,9 @@ namespace Selpo.Eet20;
 public sealed class EetTransportException : Exception
 {
     /// <summary>Initializes a transport exception with response details.</summary>
+    /// <param name="statusCode">HTTP status code returned by the EET endpoint.</param>
+    /// <param name="responseBody">Raw response body returned by the endpoint.</param>
+    /// <param name="globalTransactionId">Optional authority transaction identifier.</param>
     public EetTransportException(HttpStatusCode statusCode, string responseBody, string? globalTransactionId)
         : base($"The EET endpoint returned HTTP {(int)statusCode} ({statusCode}).")
     {
