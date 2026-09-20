@@ -145,9 +145,9 @@ public sealed class EetClientOptions
             if (DateTime.Now < SigningCertificate.NotBefore || DateTime.Now > SigningCertificate.NotAfter)
                 errors.Add($"SigningCertificate is not currently valid (valid from {SigningCertificate.NotBefore:u} to {SigningCertificate.NotAfter:u}).");
         }
-        else if (!string.IsNullOrWhiteSpace(SigningCertificatePath) && !System.IO.File.Exists(SigningCertificatePath))
+        else if (!string.IsNullOrWhiteSpace(SigningCertificatePath))
         {
-            errors.Add($"SigningCertificatePath '{SigningCertificatePath}' does not exist.");
+            ValidateSigningCertificatePath(errors, SigningCertificatePath!, SigningCertificatePassword);
         }
 
         ValidatePinnedCertificatePath(errors, AuthorityRootCertificate, AuthorityRootCertificatePath, nameof(AuthorityRootCertificatePath));
@@ -162,6 +162,14 @@ public sealed class EetClientOptions
         if (EnableAutomaticResend && (ResendDelays == null || ResendDelays.Count == 0))
         {
             errors.Add("ResendDelays must contain at least one delay when EnableAutomaticResend is true.");
+        }
+        else if (ResendDelays != null)
+        {
+            for (var index = 0; index < ResendDelays.Count; index++)
+            {
+                if (ResendDelays[index] < TimeSpan.Zero)
+                    errors.Add($"ResendDelays[{index}] must not be negative.");
+            }
         }
 
         if (HttpConnectionLifetime <= TimeSpan.Zero)
@@ -180,6 +188,32 @@ public sealed class EetClientOptions
         if (certificate == null && !string.IsNullOrWhiteSpace(path) && !System.IO.File.Exists(path))
         {
             errors.Add($"{pathPropertyName} '{path}' does not exist.");
+        }
+    }
+
+    private static void ValidateSigningCertificatePath(List<string> errors, string path, string? password)
+    {
+        if (!System.IO.File.Exists(path))
+        {
+            errors.Add($"SigningCertificatePath '{path}' does not exist.");
+            return;
+        }
+
+        try
+        {
+#if NET10_0_OR_GREATER
+            using var certificate = X509CertificateLoader.LoadPkcs12(System.IO.File.ReadAllBytes(path), password);
+#else
+            using var certificate = new X509Certificate2(path, password);
+#endif
+            if (!certificate.HasPrivateKey)
+                errors.Add("The certificate loaded from SigningCertificatePath does not have a private key required to sign messages.");
+            if (DateTime.Now < certificate.NotBefore || DateTime.Now > certificate.NotAfter)
+                errors.Add($"The certificate loaded from SigningCertificatePath is not currently valid (valid from {certificate.NotBefore:u} to {certificate.NotAfter:u}).");
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is System.Security.Cryptography.CryptographicException || exception is System.IO.IOException || exception is UnauthorizedAccessException)
+        {
+            errors.Add($"SigningCertificatePath '{path}' could not be loaded: {exception.Message}");
         }
     }
 }

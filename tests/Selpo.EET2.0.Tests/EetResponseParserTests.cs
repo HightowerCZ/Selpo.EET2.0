@@ -42,4 +42,27 @@ public sealed class EetResponseParserTests
         var acknowledgement = Assert.IsType<EetAcknowledgementResponse>(response);
         Assert.Equal("987a6be5-6af5-44f3-b4fc-987654321000-02", acknowledgement.Pok);
     }
+
+    [Fact]
+    public void Rejects_soap_fault_response()
+    {
+        var exception = Assert.Throws<EetProtocolException>(() => EetResponseParser.Parse(
+            "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><soap:Fault><faultstring>Service unavailable</faultstring></soap:Fault></soap:Body></soap:Envelope>",
+            null,
+            new EetClientOptions()));
+
+        Assert.Contains("SOAP fault", exception.Message);
+        Assert.Contains("Service unavailable", exception.Message);
+    }
+
+    [Fact]
+    public void Rejects_response_without_soap_body()
+    {
+        var exception = Assert.Throws<EetProtocolException>(() => EetResponseParser.Parse(
+            "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"></soap:Envelope>",
+            null,
+            new EetClientOptions()));
+
+        Assert.Contains("SOAP body", exception.Message);
+    }
 }

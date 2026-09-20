@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -201,6 +202,56 @@ public sealed class EetClientTests
     }
 
     [Fact]
+    public void Validate_rejects_invalid_signing_certificate_file()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "not a certificate");
+            var options = new EetClientOptions
+            {
+                BaseAddress = "https://eet.example.test/",
+                SigningCertificatePath = path
+            };
+
+            var exception = Assert.Throws<EetValidationException>(() => options.Validate());
+            Assert.Contains("could not be loaded", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Validate_rejects_certificate_file_without_private_key()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+#if NET10_0_OR_GREATER
+        using var publicCertificate = X509CertificateLoader.LoadCertificate(certificate.Export(X509ContentType.Cert));
+#else
+        using var publicCertificate = new X509Certificate2(certificate.Export(X509ContentType.Cert));
+#endif
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllBytes(path, publicCertificate.Export(X509ContentType.Pkcs12));
+            var options = new EetClientOptions
+            {
+                BaseAddress = "https://eet.example.test/",
+                SigningCertificatePath = path
+            };
+
+            var exception = Assert.Throws<EetValidationException>(() => options.Validate());
+            Assert.Contains("private key", exception.Message);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void Validate_rejects_enabled_resend_without_delays()
     {
         using var certificate = CreateSelfSignedCertificate();
@@ -213,6 +264,22 @@ public sealed class EetClientTests
 
         var exception = Assert.Throws<EetValidationException>(() => options.Validate());
         Assert.Contains("ResendDelays", exception.Message);
+    }
+
+    [Fact]
+    public void Validate_rejects_negative_resend_delay()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        var options = new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            EnableAutomaticResend = true,
+            ResendDelays = new[] { TimeSpan.FromSeconds(-1) }
+        };
+
+        var exception = Assert.Throws<EetValidationException>(() => options.Validate());
+        Assert.Contains("must not be negative", exception.Message);
     }
 
     [Fact]
