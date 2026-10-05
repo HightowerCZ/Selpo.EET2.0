@@ -3,7 +3,7 @@ using System;
 namespace Selpo.Eet20;
 
 /// <summary>
-/// Outcome of <see cref="EetClient.TestConnectionAsync"/>, describing whether the configured endpoint,
+/// Outcome of <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/>, describing whether the configured endpoint,
 /// TLS/certificate trust, and signing certificate are usable end-to-end.
 /// </summary>
 public sealed class EetConnectionTestResult

@@ -61,7 +61,7 @@ public sealed class EetClientOptions
     public X509RevocationMode RevocationMode { get; set; } = X509RevocationMode.Online;
 
     /// <summary>
-    /// Gets or sets whether <see cref="EetClient.RegisterSaleAsync"/> should automatically resend a
+    /// Gets or sets whether <see cref="EetClient.RegisterSaleAsync(RegisteredSale, System.Threading.CancellationToken)"/> should automatically resend a
     /// registered sale data message when the EET service returns error code -1 ("temporary technical
     /// error in processing - please resend the data message later", as per the EET 2.0 data interface
     /// specification). When enabled, resends follow the schedule configured in <see cref="ResendDelays"/>.
@@ -112,7 +112,7 @@ public sealed class EetClientOptions
     /// configured and loadable (and, when supplied via <see cref="SigningCertificatePath"/>, that the file
     /// exists and the certificate has a private key), that pinned authority certificate files exist when
     /// configured, and that the automatic resend settings are consistent. Use
-    /// <see cref="EetClient.TestConnectionAsync"/> to additionally verify that the endpoint is reachable and
+    /// <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/> to additionally verify that the endpoint is reachable and
     /// the certificate/trust chain is accepted by the EET service.
     /// </summary>
     /// <exception cref="EetValidationException">One or more configuration problems were found. The

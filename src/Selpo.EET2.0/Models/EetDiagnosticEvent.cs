@@ -16,8 +16,8 @@ public enum EetDiagnosticEventKind
 }
 
 /// <summary>
-/// A single diagnostic event describing progress of a <see cref="EetClient.RegisterSaleAsync"/> or
-/// <see cref="EetClient.TestConnectionAsync"/> call. Subscribe via <see cref="EetClientOptions.OnDiagnosticEvent"/>
+/// A single diagnostic event describing progress of a <see cref="EetClient.RegisterSaleAsync(RegisteredSale, System.Threading.CancellationToken)"/> or
+/// <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/> call. Subscribe via <see cref="EetClientOptions.OnDiagnosticEvent"/>
 /// to observe request lifecycle without taking a dependency on a logging framework.
 /// </summary>
 public sealed class EetDiagnosticEvent

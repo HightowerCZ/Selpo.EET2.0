@@ -62,6 +62,7 @@ The full WSDL/XSD contract for both environments is available under [`docs/proto
 - See the bilingual [usage and API reference](docs/usage.md) for all public properties, response types, callbacks, and exceptions.
 - `SigningCertificate`/`SigningCertificatePath` provide the certificate used to sign the message; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (or their `X509Certificate2` equivalents) can be used to pin the authority's certificates instead of relying on `UseSystemCertificateTrust`.
 - `RegisterSaleAsync` throws `EetValidationException` for invalid input, `EetProtocolException` for SOAP fault responses, and `EetTransportException` for network-level failures.
+- Timeout overloads are available for both endpoints: `RegisterSaleAsync(sale, timeout, cancellationToken)` and `TestConnectionAsync(timeout, cancellationToken)`.
 
 #### Production DNS and long-running connections
 
@@ -263,6 +264,7 @@ Kompletní WSDL/XSD kontrakt pro obě prostředí je dostupný ve složce [`docs
 - Podrobný dvojjazyčný [popis použití a API](docs/usage.md) vysvětluje všechny veřejné vlastnosti, typy odpovědí, callbacky a výjimky.
 - `SigningCertificate`/`SigningCertificatePath` slouží k zadání certifikátu, kterým se zpráva podepisuje; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (nebo jejich ekvivalenty typu `X509Certificate2`) lze použít k připnutí certifikátů autority místo spoléhání se na `UseSystemCertificateTrust`.
 - `RegisterSaleAsync` vyhazuje `EetValidationException` při neplatném vstupu, `EetProtocolException` při SOAP fault odpovědi a `EetTransportException` při chybách na úrovni síťového přenosu.
+- Pro oba endpointy jsou dostupné overloady s timeoutem: `RegisterSaleAsync(sale, timeout, cancellationToken)` a `TestConnectionAsync(timeout, cancellationToken)`.
 
 #### Produkční DNS a dlouhotrvající připojení
 

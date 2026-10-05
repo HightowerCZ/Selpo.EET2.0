@@ -54,7 +54,9 @@ switch (response)
 `EetClient(EetClientOptions)` creates and owns an `HttpClient`. `EetClient(HttpClient)` uses an application-supplied client but cannot register sales because no EET options are available. Use `EetClient(HttpClient, EetClientOptions)` when the application manages the HTTP client and the connector still needs EET options. The public `HttpClient` property exposes the client used by the connector. The client disposes an HTTP client only when it created that client itself.
 
 - `RegisterSaleAsync(sale, cancellationToken)` signs and sends one sale. It may automatically resend error code `-1` when enabled.
+- `RegisterSaleAsync(sale, timeout, cancellationToken)` does the same, with an optional per-attempt HTTP timeout. When omitted, the configured `HttpClient.Timeout` applies.
 - `TestConnectionAsync(cancellationToken)` sends a signed verification-mode probe. It never records a sale and returns an `EetConnectionTestResult` for expected connection, protocol, signing, and validation failures.
+- `TestConnectionAsync(timeout, cancellationToken)` runs the same verification with an optional per-request HTTP timeout. When omitted, the configured `HttpClient.Timeout` applies.
 - `Dispose()` disposes the internally created HTTP client.
 
 ### EetClientOptions properties
@@ -228,7 +230,9 @@ switch (response)
 `EetClient(EetClientOptions)` vytvari a vlastni `HttpClient`. `EetClient(HttpClient)` pouziva HTTP klienta aplikace, ale bez nastaveni EET neumozni registraci trzby. `EetClient(HttpClient, EetClientOptions)` pouzijte, kdyz HTTP klienta spravuje aplikace a konektor stale potrebuje nastaveni EET. Verejna vlastnost `HttpClient` zpristupnuje klienta pouzivaneho konektorem. Klient uvolni HTTP klienta pouze tehdy, kdyz ho vytvoril sam.
 
 - `RegisterSaleAsync(sale, cancellationToken)` podepise a odesle jednu trzbu. Pri povoleni muze automaticky opakovat chybu `-1`.
+- `RegisterSaleAsync(sale, timeout, cancellationToken)` provede stejnou operaci s volitelnym timeoutem pro kazdy HTTP pokus. Pokud timeout nezadate, pouzije se nastaveni `HttpClient.Timeout`.
 - `TestConnectionAsync(cancellationToken)` odesle podepsany dotaz v overovacim modu. Trzbu nezaeviduje a vraci `EetConnectionTestResult` pro ocekavane chyby spojeni, protokolu, podpisu a validace.
+- `TestConnectionAsync(timeout, cancellationToken)` provede stejne overeni s volitelnym timeoutem pro HTTP pozadavek. Pokud timeout nezadate, pouzije se nastaveni `HttpClient.Timeout`.
 - `Dispose()` uvolni interne vytvoreneho HTTP klienta.
 
 ### Vlastnosti EetClientOptions

@@ -74,13 +74,30 @@ public sealed class EetClient : IDisposable
     /// <param name="sale">Sale data to validate, sign, and submit.</param>
     /// <param name="cancellationToken">Token used to cancel the HTTP request or an automatic resend delay.</param>
     /// <returns>The acknowledgement or error response returned by the EET service.</returns>
-    public async Task<EetResponse> RegisterSaleAsync(RegisteredSale sale, CancellationToken cancellationToken = default)
+    public async Task<EetResponse> RegisterSaleAsync(RegisteredSale sale, CancellationToken cancellationToken)
+        => await RegisterSaleCoreAsync(sale, timeout: null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Signs and submits one registered sale message with a per-request timeout.
+    /// When automatic resend is enabled, the same timeout is applied to each individual send attempt.
+    /// </summary>
+    /// <param name="sale">Sale data to validate, sign, and submit.</param>
+    /// <param name="timeout">Maximum duration of one HTTP send attempt. Must be greater than zero when specified; null uses the configured <see cref="HttpClient.Timeout"/>.</param>
+    /// <param name="cancellationToken">Token used to cancel the HTTP request or an automatic resend delay.</param>
+    /// <returns>The acknowledgement or error response returned by the EET service.</returns>
+    public async Task<EetResponse> RegisterSaleAsync(RegisteredSale sale, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        => await RegisterSaleCoreAsync(sale, timeout, cancellationToken).ConfigureAwait(false);
+
+    private async Task<EetResponse> RegisterSaleCoreAsync(RegisteredSale sale, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         if (sale == null) throw new ArgumentNullException(nameof(sale));
+        if (timeout.HasValue && timeout.Value <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be a positive duration.");
+
         var options = _options ?? throw new InvalidOperationException("RegisterSaleAsync requires EetClientOptions.");
 
         if (!options.EnableAutomaticResend)
-            return await SendOnceAsync(sale, options, cancellationToken).ConfigureAwait(false);
+            return await SendOnceAsync(sale, options, timeout, cancellationToken).ConfigureAwait(false);
 
         if (options.ResendDelays == null || options.ResendDelays.Count == 0)
             throw new InvalidOperationException("EetClientOptions.ResendDelays must contain at least one delay when EnableAutomaticResend is true.");
@@ -91,7 +108,7 @@ public sealed class EetClient : IDisposable
         while (true)
         {
             attempt++;
-            var response = await SendOnceAsync(currentSale, options, cancellationToken).ConfigureAwait(false);
+            var response = await SendOnceAsync(currentSale, options, timeout, cancellationToken).ConfigureAwait(false);
             var isTemporaryError = response is EetErrorResponse error && error.ErrorCode == -1;
 
             if (!isTemporaryError)
@@ -123,8 +140,24 @@ public sealed class EetClient : IDisposable
     /// </summary>
     /// <param name="cancellationToken">Token used to cancel the connection test.</param>
     /// <returns>A result describing whether the signed verification request reached the EET service.</returns>
-    public async Task<EetConnectionTestResult> TestConnectionAsync(CancellationToken cancellationToken = default)
+    public async Task<EetConnectionTestResult> TestConnectionAsync(CancellationToken cancellationToken)
+        => await TestConnectionCoreAsync(timeout: null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Verifies that the client is fully and correctly configured using a signed verification-mode request,
+    /// with an optional per-request timeout.
+    /// </summary>
+    /// <param name="timeout">Maximum duration of the verification HTTP request. Must be greater than zero when specified; null uses the configured <see cref="HttpClient.Timeout"/>.</param>
+    /// <param name="cancellationToken">Token used to cancel the connection test.</param>
+    /// <returns>A result describing whether the signed verification request reached the EET service.</returns>
+    public async Task<EetConnectionTestResult> TestConnectionAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        => await TestConnectionCoreAsync(timeout, cancellationToken).ConfigureAwait(false);
+
+    private async Task<EetConnectionTestResult> TestConnectionCoreAsync(TimeSpan? timeout, CancellationToken cancellationToken)
     {
+        if (timeout.HasValue && timeout.Value <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be a positive duration.");
+
         var options = _options ?? throw new InvalidOperationException("TestConnectionAsync requires EetClientOptions.");
 
         var probe = new RegisteredSale
@@ -142,7 +175,7 @@ public sealed class EetClient : IDisposable
 
         try
         {
-            var response = await SendOnceAsync(probe, options, cancellationToken).ConfigureAwait(false);
+            var response = await SendOnceAsync(probe, options, timeout, cancellationToken).ConfigureAwait(false);
             return response switch
             {
                 EetAcknowledgementResponse ack => EetConnectionTestResult.Success(ack, $"Connected successfully. Received POK: {ack.Pok}."),
@@ -183,12 +216,31 @@ public sealed class EetClient : IDisposable
         }
     }
 
-    private async Task<EetResponse> SendOnceAsync(RegisteredSale sale, EetClientOptions options, CancellationToken cancellationToken)
+    private async Task<EetResponse> SendOnceAsync(RegisteredSale sale, EetClientOptions options, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(options);
         var body = EetMessageSerializer.SerializeRegisteredSale(sale);
         var envelope = EetSoapEnvelopeBuilder.Build(body, "id-" + Guid.NewGuid().ToString("N"));
         var certificate = ResolveCertificate(options, out var ownsCertificate);
+        CancellationTokenSource? timeoutSource = null;
+        CancellationTokenSource? linkedSource = null;
+        var effectiveCancellationToken = cancellationToken;
+
+        var timeoutValue = timeout;
+        if (timeoutValue.HasValue)
+        {
+            timeoutSource = new CancellationTokenSource(timeoutValue.Value);
+            if (cancellationToken.CanBeCanceled)
+            {
+                linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+                effectiveCancellationToken = linkedSource.Token;
+            }
+            else
+            {
+                effectiveCancellationToken = timeoutSource.Token;
+            }
+        }
+
         options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(EetDiagnosticEventKind.Sending, $"Sending registered sale to {endpoint}.", sale.MessageId));
         try
         {
@@ -197,10 +249,14 @@ public sealed class EetClient : IDisposable
                 throw new EetValidationException("The SOAP message exceeds the EET 12 kB limit.");
 
             var transport = new EetSoapTransport(_httpClient, endpoint);
-            var response = await transport.SendAsync(signedEnvelope, cancellationToken).ConfigureAwait(false);
+            var response = await transport.SendAsync(signedEnvelope, effectiveCancellationToken).ConfigureAwait(false);
             var parsed = EetResponseParser.Parse(response.Body, response.GlobalTransactionId, options);
             options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(EetDiagnosticEventKind.ResponseReceived, DescribeResponse(parsed), sale.MessageId));
             return parsed;
+        }
+        catch (OperationCanceledException) when (timeoutSource is not null && timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"The request to '{endpoint}' timed out after {timeoutValue!.Value}.");
         }
         catch (Exception exception)
         {
@@ -209,6 +265,8 @@ public sealed class EetClient : IDisposable
         }
         finally
         {
+            linkedSource?.Dispose();
+            timeoutSource?.Dispose();
             if (ownsCertificate) certificate.Dispose();
         }
     }

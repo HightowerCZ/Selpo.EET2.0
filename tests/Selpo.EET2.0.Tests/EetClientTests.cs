@@ -148,6 +148,40 @@ public sealed class EetClientTests
     }
 
     [Fact]
+    public async Task RegisterSaleAsync_times_out_when_timeout_is_reached()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate
+        });
+
+        await Assert.ThrowsAsync<TimeoutException>(() => client.RegisterSaleAsync(CreateSale(), TimeSpan.FromMilliseconds(50)));
+    }
+
+    [Fact]
+    public async Task RegisterSaleAsync_rejects_non_positive_timeout()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => CreateErrorResponse(2)));
+
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate
+        });
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.RegisterSaleAsync(CreateSale(), TimeSpan.Zero));
+    }
+
+    [Fact]
     public void Validate_passes_for_a_well_formed_configuration()
     {
         using var certificate = CreateSelfSignedCertificate();
@@ -364,6 +398,43 @@ public sealed class EetClientTests
     }
 
     [Fact]
+    public async Task TestConnectionAsync_reports_failure_when_timeout_is_reached()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate
+        });
+
+        var result = await client.TestConnectionAsync(TimeSpan.FromMilliseconds(50));
+
+        Assert.False(result.IsSuccess);
+        Assert.IsType<TimeoutException>(result.Exception);
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_rejects_non_positive_timeout()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => CreateErrorResponse(2)));
+
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate
+        });
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.TestConnectionAsync(TimeSpan.Zero));
+    }
+
+    [Fact]
     public async Task TestConnectionAsync_reports_failure_on_http_request_exception()
     {
         using var certificate = CreateSelfSignedCertificate();
@@ -525,11 +596,17 @@ public sealed class EetClientTests
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
-        private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
+        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _responder;
 
-        public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) => _responder = responder;
+        public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
+            : this((request, _) => Task.FromResult(responder(request)))
+        {
+        }
+
+        public StubHttpMessageHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responder)
+            => _responder = responder;
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-            => Task.FromResult(_responder(request));
+            => _responder(request, cancellationToken);
     }
 }

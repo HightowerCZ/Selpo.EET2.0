@@ -3,7 +3,7 @@ using System;
 namespace Selpo.Eet20;
 
 /// <summary>
-/// Describes one automatic resend attempt performed by <see cref="EetClient.RegisterSaleAsync"/>
+/// Describes one automatic resend attempt performed by <see cref="EetClient.RegisterSaleAsync(RegisteredSale, System.Threading.CancellationToken)"/>
 /// when <see cref="EetClientOptions.EnableAutomaticResend"/> is enabled and the EET service returns
 /// a temporary technical error (error code -1).
 /// </summary>
