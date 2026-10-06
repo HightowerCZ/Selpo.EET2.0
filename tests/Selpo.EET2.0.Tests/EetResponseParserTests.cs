@@ -44,6 +44,33 @@ public sealed class EetResponseParserTests
     }
 
     [Fact]
+    public void Repeated_acknowledgement_validation_preserves_application_authority_certificates()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest("CN=Reusable authority root", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.DigitalSignature, true));
+        using var root = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddMinutes(10));
+        var originalRootData = root.RawData;
+        var body = "<tns:Odpoved xmlns:tns=\"http://fs.gov.cz/eet/schema/v4\"><tns:Hlavicka uuid_zpravy=\"e23e5a5a-08d7-4a08-844d-2b6c6b60621d\" dat_prij=\"2027-01-08T21:19:40+01:00\" /><tns:Potvrzeni pok=\"987a6be5-6af5-44f3-b4fc-987654321000-02\" /></tns:Odpoved>";
+        var signed = EetMessageSigner.Sign(EetSoapEnvelopeBuilder.Build(body, "reusable-body"), root);
+        var options = new EetClientOptions
+        {
+            UseSystemCertificateTrust = false,
+            AuthorityRootCertificate = root,
+            AuthorityIntermediateCertificate = root,
+            RevocationMode = X509RevocationMode.NoCheck
+        };
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            Assert.IsType<EetAcknowledgementResponse>(EetResponseParser.Parse(signed, null, options));
+            Assert.Equal(originalRootData, root.RawData);
+            Assert.True(root.HasPrivateKey);
+        }
+    }
+
+    [Fact]
     public void Rejects_soap_fault_response()
     {
         var exception = Assert.Throws<EetProtocolException>(() => EetResponseParser.Parse(

@@ -4,7 +4,8 @@ namespace Selpo.Eet20;
 
 /// <summary>
 /// Outcome of <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/>, describing whether the configured endpoint,
-/// TLS/certificate trust, and signing certificate are usable end-to-end.
+/// TLS connection, and signing certificate are usable. Authority acknowledgement trust is only
+/// tested when a signed acknowledgement is received.
 /// </summary>
 public sealed class EetConnectionTestResult
 {
@@ -17,11 +18,16 @@ public sealed class EetConnectionTestResult
     }
 
     /// <summary>
-    /// Gets whether the connection test succeeded, i.e. a signed verification-mode message reached the
-    /// EET service and produced a valid protocol response (either an acknowledgement or an EET-level
-    /// rejection - both indicate that transport, TLS trust, and signing were successful).
+    /// Gets whether the configured verification-mode message was accepted by the EET service
+    /// with an acknowledgement or verification result code 0. Other EET rejections are failures.
     /// </summary>
     public bool IsSuccess { get; }
+
+    /// <summary>
+    /// Gets whether a signed acknowledgement passed the configured authority certificate policy.
+    /// False for verification code 0, which does not exercise acknowledgement signature or trust validation.
+    /// </summary>
+    public bool IsAcknowledgementTrustValidated => IsSuccess && Response is EetAcknowledgementResponse;
 
     /// <summary>Gets a human-readable summary of the outcome.</summary>
     public string Message { get; }

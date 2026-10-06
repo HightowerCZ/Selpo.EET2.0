@@ -132,16 +132,19 @@ Each `EetWarning` has a numeric `Code` and authority-provided `Message`. Warning
 
 ### Verification and connection testing
 
-Use `VerificationMode = true` for an explicit probe. The EET specification says that verification mode does not fulfill the reporting obligation and does not register the sale. `TestConnectionAsync()` creates such a probe automatically.
+Use `VerificationMode = true` for an explicit probe. The EET specification says that verification mode does not fulfill the reporting obligation and does not register the sale. `TestConnectionAsync()` requires `EetClientOptions.ConnectionTestSale` containing your actual taxpayer, register, and authorization data. It copies this template, generates a fresh message ID and submission time, and forces verification mode and first submission without modifying the template. No built-in test identity is used. Missing or invalid templates fail locally without sending a request.
 
 `EetConnectionTestResult` contains:
 
-- `IsSuccess`: `true` when a signed request reached the service and produced an EET response, including an EET-level rejection.
+- `IsSuccess`: `true` for an acknowledgement or verification code `0`; other EET-level rejections are failures with `Response` preserved.
+- `IsAcknowledgementTrustValidated`: `true` only for a signed acknowledgement that passed the configured authority signature and trust checks. Verification code `0` does not exercise these checks.
 - `Message`: human-readable result summary.
 - `Response`: received `EetResponse`, when the request reached the service.
 - `Exception`: underlying failure, when the test could not complete successfully.
 
 Cancellation requested through the `CancellationToken` is propagated rather than converted into a failed result.
+
+Before sending, the connection test validates the effective configuration, including certificate validity and loadability, authority trust settings, and resend settings. An application-supplied `HttpClient.BaseAddress` is used if no endpoint is set in the options. Code `0` is verification success, not proof of acknowledgement trust. Application-supplied authority certificates are not disposed by the library.
 
 ### Automatic resend
 
@@ -308,16 +311,19 @@ Kazde `EetWarning` obsahuje ciselny `Code` a text autority `Message`. Samotne va
 
 ### Overeni a test spojeni
 
-Pro vlastni overovaci pozadavek nastavte `VerificationMode = true`. Podle specifikace overovaci rezim neplni evidencni povinnost a trzbu neeviduje. `TestConnectionAsync()` takovy pozadavek vytvori automaticky.
+Pro vlastni overovaci pozadavek nastavte `VerificationMode = true`. Podle specifikace overovaci rezim neplni evidencni povinnost a trzbu neeviduje. `TestConnectionAsync()` vyzaduje `EetClientOptions.ConnectionTestSale` se skutecnymi udaji poplatnika, pokladny a povereni. Zkopiruje sablonu, vytvori nove UUID a cas odeslani a vynuti overovaci rezim a prvni zaslani bez zmeny sablony. Prednastavena testovaci identita se nepouziva. Chybejici nebo neplatna sablona selze lokalne bez odeslani pozadavku.
 
 `EetConnectionTestResult` obsahuje:
 
-- `IsSuccess`: `true`, pokud podepsany pozadavek dorazil ke sluzbe a dostal odpoved EET, vcetne odmitnuti na urovni EET.
+- `IsSuccess`: `true` pri potvrzeni nebo overovacim kodu `0`; ostatni odmitnuti EET znamenaji neuspech se zachovanou `Response`.
+- `IsAcknowledgementTrustValidated`: `true` pouze pro podepsane potvrzeni, ktere proslo nastavenymi kontrolami podpisu a duvery autority. Overovaci kod `0` tyto kontroly neprovadi.
 - `Message`: strucne lidske vysvetleni vysledku.
 - `Response`: prijata odpoved `EetResponse`, pokud pozadavek dorazil ke sluzbe.
 - `Exception`: puvodni vyjimka pri neuspesnem testu.
 
 Zruseni pomoci `CancellationToken` se propaguje jako zruseni, ne jako neuspesny vysledek.
+
+Pred odeslanim test spojeni validuje skutecnou konfiguraci vcetne platnosti a nacitelnosti certifikatu, nastaveni duvery autority a opakovaneho odesilani. Pokud options nemaji endpoint, pouzije se `HttpClient.BaseAddress` dodane aplikaci. Kod `0` znamena uspesne overeni, nikoli overeni duveryhodnosti potvrzeni. Knihovna neuvolnuje certifikaty autority dodane aplikaci.
 
 ### Automaticke opakovani
 

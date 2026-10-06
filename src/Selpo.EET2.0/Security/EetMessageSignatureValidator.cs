@@ -66,36 +66,26 @@ internal static class EetMessageSignatureValidator
     private static bool BuildTrustedChain(X509Certificate2 certificate, EetClientOptions options)
     {
         using var chain = new X509Chain();
+        using var root = ResolveCertificate(options.AuthorityRootCertificate, options.AuthorityRootCertificatePath);
+        using var intermediate = ResolveCertificate(options.AuthorityIntermediateCertificate, options.AuthorityIntermediateCertificatePath);
+        chain.ChainPolicy.RevocationMode = options.RevocationMode;
+        if (intermediate != null) chain.ChainPolicy.ExtraStore.Add(intermediate);
+        if (root != null) chain.ChainPolicy.ExtraStore.Add(root);
 #if NET10_0_OR_GREATER
-        var root = ResolveCertificate(options.AuthorityRootCertificate, options.AuthorityRootCertificatePath);
         if (root != null)
         {
-            using (root)
-            {
-                chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
-                chain.ChainPolicy.CustomTrustStore.Add(root);
-                chain.ChainPolicy.RevocationMode = options.RevocationMode;
-                AddIntermediate(chain, options);
-                return chain.Build(certificate);
-            }
+            chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
+            chain.ChainPolicy.CustomTrustStore.Add(root);
+            return chain.Build(certificate);
         }
 #endif
-    var hasConfiguredRoot = !string.IsNullOrWhiteSpace(options.AuthorityRootCertificatePath) || options.AuthorityRootCertificate != null;
-    chain.ChainPolicy.RevocationMode = options.RevocationMode;
-    if (hasConfiguredRoot)
-    {
-        chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
-    }
-        AddIntermediate(chain, options);
+        if (root != null)
+            chain.ChainPolicy.VerificationFlags = X509VerificationFlags.AllowUnknownCertificateAuthority;
         var trusted = chain.Build(certificate);
-        var configuredRoot = ResolveCertificate(options.AuthorityRootCertificate, options.AuthorityRootCertificatePath);
-        if (configuredRoot == null) return trusted;
-        using (configuredRoot)
-        {
-            var chainRoot = chain.ChainElements.Count == 0 ? null : chain.ChainElements[chain.ChainElements.Count - 1].Certificate;
-            var allowedUnknownRoot = chain.ChainStatus.Length == 1 && chain.ChainStatus[0].Status == X509ChainStatusFlags.UntrustedRoot;
-            return (trusted || allowedUnknownRoot) && chainRoot != null && string.Equals(chainRoot.Thumbprint, configuredRoot.Thumbprint, StringComparison.OrdinalIgnoreCase);
-        }
+        if (root == null) return trusted;
+        var chainRoot = chain.ChainElements.Count == 0 ? null : chain.ChainElements[chain.ChainElements.Count - 1].Certificate;
+        var allowedUnknownRoot = chain.ChainStatus.Length == 1 && chain.ChainStatus[0].Status == X509ChainStatusFlags.UntrustedRoot;
+        return (trusted || allowedUnknownRoot) && chainRoot != null && string.Equals(chainRoot.Thumbprint, root.Thumbprint, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasAuthorityChain(EetClientOptions options)
@@ -103,15 +93,14 @@ internal static class EetMessageSignatureValidator
         return !string.IsNullOrWhiteSpace(options.AuthorityRootCertificatePath) || options.AuthorityRootCertificate != null;
     }
 
-    private static void AddIntermediate(X509Chain chain, EetClientOptions options)
-    {
-        var intermediate = ResolveCertificate(options.AuthorityIntermediateCertificate, options.AuthorityIntermediateCertificatePath);
-        if (intermediate != null) chain.ChainPolicy.ExtraStore.Add(intermediate);
-    }
-
     private static X509Certificate2? ResolveCertificate(X509Certificate2? certificate, string? path)
     {
-        if (certificate != null) return certificate;
+        if (certificate != null)
+#if NET10_0_OR_GREATER
+            return X509CertificateLoader.LoadCertificate(certificate.RawData);
+#else
+            return new X509Certificate2(certificate.RawData);
+#endif
         if (string.IsNullOrWhiteSpace(path)) return null;
 #if NET10_0_OR_GREATER
         return X509CertificateLoader.LoadCertificate(System.IO.File.ReadAllBytes(path));

@@ -78,6 +78,15 @@ public sealed class PlaygroundIntegrationTests
             BaseAddress = "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
             SigningCertificatePath = certificatePath,
             SigningCertificatePassword = password,
+            ConnectionTestSale = new RegisteredSale
+            {
+                Eic = "CZ8551015704",
+                UnitId = 181,
+                PosId = "00/2535/CN58",
+                TransactionNumber = "connection-test",
+                TransactionTime = DateTimeOffset.Now,
+                TotalAmount = 1.00m
+            },
             UseSystemCertificateTrust = string.IsNullOrWhiteSpace(rootCertificatePath),
             AuthorityRootCertificatePath = rootCertificatePath,
             AuthorityIntermediateCertificatePath = intermediateCertificatePath

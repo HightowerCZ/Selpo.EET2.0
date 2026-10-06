@@ -129,14 +129,16 @@ public sealed class EetClient : IDisposable
     }
 
     /// <summary>
-    /// Verifies that the client is fully and correctly configured by sending a signed verification-mode
+    /// Validates the client configuration and sends a signed verification-mode
     /// (<see cref="RegisteredSale.VerificationMode"/> = <c>true</c>) message to the configured EET endpoint.
-    /// Unlike <see cref="EetClientOptions.Validate"/>, this performs an actual network round trip, so it
+    /// Unlike <see cref="EetClientOptions.Validate()"/>, this performs an actual network round trip, so it
     /// also exercises TLS/certificate trust and endpoint reachability. A verification-mode message is never
     /// registered by the EET service, so this is safe to call against the production endpoint. Both a
-    /// successful acknowledgement and an EET-level rejection (e.g. a malformed placeholder value) indicate
-    /// that transport, TLS trust, and message signing are working; only transport-level, protocol-level, or
-    /// signing failures are reported as an unsuccessful result.
+    /// successful acknowledgement and verification result code 0 indicate success. Other EET-level
+    /// rejections are reported as failures with the response preserved. The request uses
+    /// <see cref="EetClientOptions.ConnectionTestSale"/> rather than built-in test identifiers.
+    /// A verification result code 0 does not exercise authority acknowledgement trust; inspect
+    /// <see cref="EetConnectionTestResult.IsAcknowledgementTrustValidated"/> to distinguish this case.
     /// </summary>
     /// <param name="cancellationToken">Token used to cancel the connection test.</param>
     /// <returns>A result describing whether the signed verification request reached the EET service.</returns>
@@ -144,7 +146,7 @@ public sealed class EetClient : IDisposable
         => await TestConnectionCoreAsync(timeout: null, cancellationToken).ConfigureAwait(false);
 
     /// <summary>
-    /// Verifies that the client is fully and correctly configured using a signed verification-mode request,
+    /// Validates configuration and sends a signed verification-mode request,
     /// with an optional per-request timeout.
     /// </summary>
     /// <param name="timeout">Maximum duration of the verification HTTP request. Must be greater than zero when specified; null uses the configured <see cref="HttpClient.Timeout"/>.</param>
@@ -160,26 +162,22 @@ public sealed class EetClient : IDisposable
 
         var options = _options ?? throw new InvalidOperationException("TestConnectionAsync requires EetClientOptions.");
 
-        var probe = new RegisteredSale
-        {
-            VerificationMode = true,
-            Eic = "CZ00000019",
-            UnitId = 1,
-            PosId = "connection-test",
-            TransactionNumber = "conn-test-" + Guid.NewGuid().ToString("N").Substring(0, 8),
-            SubmissionTime = DateTimeOffset.Now,
-            TransactionTime = DateTimeOffset.Now,
-            TotalAmount = 0.00m,
-            FirstSubmission = true
-        };
-
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            options.Validate(_httpClient.BaseAddress);
+            var template = options.ConnectionTestSale
+                ?? throw new EetValidationException("EetClientOptions.ConnectionTestSale must be configured with the actual taxpayer and register data.");
+            var probe = CreateResendCopy(template);
+            probe.VerificationMode = true;
+            probe.FirstSubmission = true;
+
             var response = await SendOnceAsync(probe, options, timeout, cancellationToken).ConfigureAwait(false);
             return response switch
             {
                 EetAcknowledgementResponse ack => EetConnectionTestResult.Success(ack, $"Connected successfully. Received POK: {ack.Pok}."),
-                EetErrorResponse error => EetConnectionTestResult.Success(error, $"Connected successfully. The EET service responded with error {error.ErrorCode}: {error.ErrorMessage}."),
+                EetErrorResponse error when error.ErrorCode == 0 => EetConnectionTestResult.Success(error, $"Verification succeeded: {error.ErrorMessage}. Authority acknowledgement trust was not tested."),
+                EetErrorResponse error => new EetConnectionTestResult(false, $"The EET service rejected the verification request with error {error.ErrorCode}: {error.ErrorMessage}.", error, exception: null),
                 _ => EetConnectionTestResult.Failure("The EET service returned an unrecognized response.", exception: null!)
             };
         }

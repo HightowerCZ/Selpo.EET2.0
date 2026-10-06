@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using Selpo.Eet20;
 using Xunit;
 
@@ -317,6 +318,226 @@ public sealed class EetClientTests
     }
 
     [Fact]
+    public async Task TestConnectionAsync_uses_configured_identity_endpoint_and_certificate_without_mutating_template()
+    {
+        using var certificate = CreateSelfSignedCertificate("CN=Configured taxpayer");
+        var template = CreateSale();
+        template.UnitId = 181;
+        template.PosId = "ACTUAL-POS";
+        template.AuthorizingEic = "CZ87654321";
+        template.MultipleTaxpayerAuthorization = true;
+        template.FirstSubmission = false;
+        template.SubmissionTime = DateTimeOffset.UtcNow.AddDays(-1);
+        var originalMessageId = template.MessageId;
+        var originalSubmissionTime = template.SubmissionTime;
+        string? requestBody = null;
+        Uri? requestUri = null;
+        var requestCount = 0;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(async (request, _) =>
+        {
+            requestCount++;
+            requestUri = request.RequestUri;
+            requestBody = await request.Content!.ReadAsStringAsync();
+            return CreateErrorResponse(0);
+        })) { BaseAddress = new Uri("https://unused.example.test/") };
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://configured.example.test/eet",
+            SigningCertificate = certificate,
+            ConnectionTestSale = template,
+            EnableAutomaticResend = true,
+            ResendDelays = new[] { TimeSpan.Zero }
+        });
+
+        var result = await client.TestConnectionAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(1, requestCount);
+        Assert.Equal(new Uri("https://configured.example.test/eet"), requestUri);
+        var document = new XmlDocument();
+        document.LoadXml(requestBody!);
+        var header = (XmlElement)document.GetElementsByTagName("Hlavicka", "http://fs.gov.cz/eet/schema/v4")[0]!;
+        var data = (XmlElement)document.GetElementsByTagName("Data", "http://fs.gov.cz/eet/schema/v4")[0]!;
+        Assert.Equal("true", header.GetAttribute("overeni"));
+        Assert.Equal("true", header.GetAttribute("prvni_zaslani"));
+        Assert.NotEqual(originalMessageId.ToString("D"), header.GetAttribute("uuid_zpravy"));
+        Assert.NotEqual(originalSubmissionTime.ToString("yyyy-MM-dd'T'HH:mm:sszzz"), header.GetAttribute("dat_odesl"));
+        Assert.Equal(template.Eic, data.GetAttribute("eic_popl"));
+        Assert.Equal("181", data.GetAttribute("id_jednotky"));
+        Assert.Equal(template.PosId, data.GetAttribute("id_pokl"));
+        Assert.Equal(template.AuthorizingEic, data.GetAttribute("eic_poverujiciho"));
+        Assert.Equal("true", data.GetAttribute("povereni_vice_popl"));
+        Assert.Equal(template.TransactionNumber, data.GetAttribute("porad_cis"));
+        Assert.Equal("1.00", data.GetAttribute("celk_trzba"));
+        var token = document.GetElementsByTagName("BinarySecurityToken", "*")[0]!;
+        Assert.Equal(certificate.RawData, Convert.FromBase64String(token.InnerText));
+        Assert.False(template.VerificationMode);
+        Assert.False(template.FirstSubmission);
+        Assert.Equal(originalMessageId, template.MessageId);
+        Assert.Equal(originalSubmissionTime, template.SubmissionTime);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TestConnectionAsync_rejects_missing_or_invalid_probe_without_sending(bool invalidProbe)
+    {
+        var requestCount = 0;
+        using var certificate = CreateSelfSignedCertificate();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+        {
+            requestCount++;
+            return CreateErrorResponse(0);
+        }));
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            ConnectionTestSale = invalidProbe ? new RegisteredSale() : null
+        });
+
+        var result = await client.TestConnectionAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.IsType<EetValidationException>(result.Exception);
+        Assert.Null(result.Response);
+        Assert.Equal(0, requestCount);
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_uses_http_client_endpoint_when_options_endpoint_is_missing()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        Uri? requestUri = null;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            requestUri = request.RequestUri;
+            return CreateErrorResponse(0);
+        })) { BaseAddress = new Uri("https://fallback.example.test/eet") };
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            SigningCertificate = certificate,
+            ConnectionTestSale = CreateSale()
+        });
+
+        var result = await client.TestConnectionAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.False(result.IsAcknowledgementTrustValidated);
+        Assert.Equal(httpClient.BaseAddress, requestUri);
+    }
+
+    [Theory]
+    [InlineData(0, "ResendDelays")]
+    [InlineData(1, "must not be negative")]
+    [InlineData(2, "HttpConnectionLifetime")]
+    [InlineData(3, "no pinned authority certificate")]
+    [InlineData(4, "does not exist")]
+    [InlineData(5, "could not be loaded")]
+    [InlineData(6, "HTTPS")]
+    public async Task TestConnectionAsync_rejects_invalid_configuration_before_sending(int configuration, string expectedError)
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        var filePath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(filePath, "not a certificate");
+            var requestCount = 0;
+            using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            {
+                requestCount++;
+                return CreateErrorResponse(0);
+            }));
+            var options = new EetClientOptions
+            {
+                BaseAddress = "https://eet.example.test/",
+                SigningCertificate = certificate,
+                ConnectionTestSale = CreateSale()
+            };
+            switch (configuration)
+            {
+                case 0: options.EnableAutomaticResend = true; break;
+                case 1: options.ResendDelays = new[] { TimeSpan.FromSeconds(-1) }; break;
+                case 2: options.HttpConnectionLifetime = TimeSpan.Zero; break;
+                case 3: options.UseSystemCertificateTrust = false; break;
+                case 4: options.AuthorityRootCertificatePath = filePath + ".missing"; break;
+                case 5: options.AuthorityIntermediateCertificatePath = filePath; break;
+                case 6: options.BaseAddress = "http://eet.example.test/"; break;
+            }
+            using var client = new EetClient(httpClient, options);
+
+            var result = await client.TestConnectionAsync();
+
+            Assert.False(result.IsSuccess);
+            Assert.False(result.IsAcknowledgementTrustValidated);
+            Assert.IsType<EetValidationException>(result.Exception);
+            Assert.Contains(expectedError, result.Exception!.Message);
+            Assert.Equal(0, requestCount);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_rejects_expired_signing_certificate_before_sending()
+    {
+        using var rsa = RSA.Create(2048);
+        var certificateRequest = new CertificateRequest("CN=Expired taxpayer", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-2), DateTimeOffset.UtcNow.AddDays(-1));
+        var requestCount = 0;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+        {
+            requestCount++;
+            return CreateErrorResponse(0);
+        }));
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            ConnectionTestSale = CreateSale()
+        });
+
+        var result = await client.TestConnectionAsync();
+
+        Assert.False(result.IsSuccess);
+        Assert.IsType<EetValidationException>(result.Exception);
+        Assert.Contains("not currently valid", result.Exception!.Message);
+        Assert.Equal(0, requestCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TestConnectionAsync_never_claims_trust_validation_with_a_mismatched_pin(bool signedAcknowledgement)
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var actualAuthority = CreateSelfSignedCertificate("CN=Actual authority");
+        using var wrongAuthority = CreateSelfSignedCertificate("CN=Wrong authority");
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => signedAcknowledgement
+            ? CreateAcknowledgementResponse(actualAuthority)
+            : CreateErrorResponse(0)));
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            ConnectionTestSale = CreateSale(),
+            UseSystemCertificateTrust = false,
+            PinnedAuthorityCertificate = wrongAuthority
+        });
+
+        var result = await client.TestConnectionAsync();
+
+        Assert.False(result.IsAcknowledgementTrustValidated);
+        Assert.Equal(!signedAcknowledgement, result.IsSuccess);
+        if (signedAcknowledgement)
+            Assert.IsType<EetProtocolException>(result.Exception);
+        else
+            Assert.Contains("trust was not tested", result.Message);
+    }
+
+    [Fact]
     public async Task TestConnectionAsync_reports_success_on_acknowledgement()
     {
         using var certificate = CreateSelfSignedCertificate();
@@ -326,6 +547,7 @@ public sealed class EetClientTests
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            ConnectionTestSale = CreateSale(),
             SigningCertificate = certificate,
             UseSystemCertificateTrust = false,
             PinnedAuthorityCertificate = authorityCertificate
@@ -334,26 +556,34 @@ public sealed class EetClientTests
         var result = await client.TestConnectionAsync();
 
         Assert.True(result.IsSuccess);
+        Assert.True(result.IsAcknowledgementTrustValidated);
         Assert.IsType<EetAcknowledgementResponse>(result.Response);
         Assert.Null(result.Exception);
     }
 
-    [Fact]
-    public async Task TestConnectionAsync_reports_success_on_eet_error_response()
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(2, false)]
+    [InlineData(-1, false)]
+    public async Task TestConnectionAsync_reports_verification_result(int errorCode, bool expectedSuccess)
     {
         using var certificate = CreateSelfSignedCertificate();
-        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => CreateErrorResponse(2)));
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => CreateErrorResponse(errorCode)));
 
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            ConnectionTestSale = CreateSale(),
             SigningCertificate = certificate
         });
 
         var result = await client.TestConnectionAsync();
 
-        Assert.True(result.IsSuccess);
-        Assert.IsType<EetErrorResponse>(result.Response);
+        Assert.Equal(expectedSuccess, result.IsSuccess);
+        Assert.False(result.IsAcknowledgementTrustValidated);
+        if (expectedSuccess) Assert.Contains("trust was not tested", result.Message);
+        Assert.Equal(errorCode, Assert.IsType<EetErrorResponse>(result.Response).ErrorCode);
+        Assert.Null(result.Exception);
     }
 
     [Fact]
@@ -369,6 +599,7 @@ public sealed class EetClientTests
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            ConnectionTestSale = CreateSale(),
             SigningCertificate = certificate
         });
 
@@ -387,6 +618,7 @@ public sealed class EetClientTests
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            ConnectionTestSale = CreateSale(),
             SigningCertificate = certificate
         });
 
@@ -410,6 +642,7 @@ public sealed class EetClientTests
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            ConnectionTestSale = CreateSale(),
             SigningCertificate = certificate
         });
 
@@ -443,6 +676,7 @@ public sealed class EetClientTests
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            ConnectionTestSale = CreateSale(),
             SigningCertificate = certificate
         });
 

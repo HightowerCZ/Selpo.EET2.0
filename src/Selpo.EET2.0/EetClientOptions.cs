@@ -15,6 +15,14 @@ public sealed class EetClientOptions
     public string? BaseAddress { get; set; }
 
     /// <summary>
+    /// Gets or sets the sale template used by connection tests. Supply the actual taxpayer,
+    /// unit, point-of-sale, and authorization values. The client copies this template and
+    /// always forces verification mode, a fresh message ID, and current submission time.
+    /// Required only when calling <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/>.
+    /// </summary>
+    public RegisteredSale? ConnectionTestSale { get; set; }
+
+    /// <summary>
     /// Gets or sets the certificate used to sign registered sale messages.
     /// </summary>
     public X509Certificate2? SigningCertificate { get; set; }
@@ -112,26 +120,30 @@ public sealed class EetClientOptions
     /// configured and loadable (and, when supplied via <see cref="SigningCertificatePath"/>, that the file
     /// exists and the certificate has a private key), that pinned authority certificate files exist when
     /// configured, and that the automatic resend settings are consistent. Use
-    /// <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/> to additionally verify that the endpoint is reachable and
-    /// the certificate/trust chain is accepted by the EET service.
+    /// <see cref="EetClient.TestConnectionAsync(System.Threading.CancellationToken)"/> to additionally verify endpoint reachability
+    /// and signing. Authority acknowledgement trust is exercised only when a signed acknowledgement is received.
     /// </summary>
     /// <exception cref="EetValidationException">One or more configuration problems were found. The
     /// exception message lists every problem found.</exception>
     public void Validate()
+        => Validate(fallbackEndpoint: null);
+
+    internal void Validate(Uri? fallbackEndpoint)
     {
         var errors = new List<string>();
+        var baseAddress = string.IsNullOrWhiteSpace(BaseAddress) ? fallbackEndpoint?.AbsoluteUri : BaseAddress;
 
-        if (string.IsNullOrWhiteSpace(BaseAddress))
+        if (string.IsNullOrWhiteSpace(baseAddress))
         {
             errors.Add("BaseAddress must be set to the EET service endpoint.");
         }
-        else if (!Uri.TryCreate(BaseAddress, UriKind.Absolute, out var endpointUri))
+        else if (!Uri.TryCreate(baseAddress, UriKind.Absolute, out var endpointUri))
         {
-            errors.Add($"BaseAddress '{BaseAddress}' is not a valid absolute URL.");
+            errors.Add($"BaseAddress '{baseAddress}' is not a valid absolute URL.");
         }
         else if (!string.Equals(endpointUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
         {
-            errors.Add($"BaseAddress '{BaseAddress}' must use HTTPS.");
+            errors.Add($"BaseAddress '{baseAddress}' must use HTTPS.");
         }
 
         if (SigningCertificate == null && string.IsNullOrWhiteSpace(SigningCertificatePath))
@@ -152,6 +164,7 @@ public sealed class EetClientOptions
 
         ValidatePinnedCertificatePath(errors, AuthorityRootCertificate, AuthorityRootCertificatePath, nameof(AuthorityRootCertificatePath));
         ValidatePinnedCertificatePath(errors, AuthorityIntermediateCertificate, AuthorityIntermediateCertificatePath, nameof(AuthorityIntermediateCertificatePath));
+        ValidateCertificateValidity(errors, PinnedAuthorityCertificate, nameof(PinnedAuthorityCertificate));
 
         if (!UseSystemCertificateTrust && PinnedAuthorityCertificate == null && AuthorityRootCertificate == null
             && string.IsNullOrWhiteSpace(AuthorityRootCertificatePath))
@@ -185,10 +198,37 @@ public sealed class EetClientOptions
 
     private static void ValidatePinnedCertificatePath(List<string> errors, X509Certificate2? certificate, string? path, string pathPropertyName)
     {
-        if (certificate == null && !string.IsNullOrWhiteSpace(path) && !System.IO.File.Exists(path))
+        if (certificate != null)
+        {
+            ValidateCertificateValidity(errors, certificate, pathPropertyName);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(path)) return;
+        if (!System.IO.File.Exists(path))
         {
             errors.Add($"{pathPropertyName} '{path}' does not exist.");
+            return;
         }
+
+        try
+        {
+#if NET10_0_OR_GREATER
+            using var loaded = X509CertificateLoader.LoadCertificate(System.IO.File.ReadAllBytes(path));
+#else
+            using var loaded = new X509Certificate2(path);
+#endif
+            ValidateCertificateValidity(errors, loaded, pathPropertyName);
+        }
+        catch (Exception exception) when (exception is ArgumentException || exception is System.Security.Cryptography.CryptographicException || exception is System.IO.IOException || exception is UnauthorizedAccessException)
+        {
+            errors.Add($"{pathPropertyName} '{path}' could not be loaded: {exception.Message}");
+        }
+    }
+
+    private static void ValidateCertificateValidity(List<string> errors, X509Certificate2? certificate, string name)
+    {
+        if (certificate != null && (DateTime.Now < certificate.NotBefore || DateTime.Now > certificate.NotAfter))
+            errors.Add($"{name} is not currently valid (valid from {certificate.NotBefore:u} to {certificate.NotAfter:u}).");
     }
 
     private static void ValidateSigningCertificatePath(List<string> errors, string path, string? password)

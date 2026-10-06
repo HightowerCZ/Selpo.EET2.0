@@ -119,8 +119,10 @@ options.OnDiagnosticEvent = e => logger.LogInformation("[{Kind}] {MessageId}: {M
 
 Two complementary checks help catch configuration problems before you submit real sales:
 
-- `EetClientOptions.Validate()` performs local, offline checks (no network call): the endpoint is an absolute HTTPS URL, a signing certificate is configured and loadable with a private key and is currently valid, any pinned authority certificate paths exist, resend settings are consistent, and `HttpConnectionLifetime` is positive. It throws `EetValidationException` listing every problem found.
-- `EetClient.TestConnectionAsync()` performs an actual network round trip: it sends a signed verification-mode message (`RegisteredSale.VerificationMode = true`, which the EET service never registers) to the configured endpoint and returns an `EetConnectionTestResult`. This exercises TLS/certificate trust and endpoint reachability, in addition to signing. Both a successful acknowledgement and an EET-level rejection count as success, since either means the request reached the service and was processed; only transport, protocol, or signing failures are reported as unsuccessful. `TestConnectionAsync` never throws for these expected failure modes - including unexpected HTTP or transport-level errors - it always returns an `EetConnectionTestResult` describing the outcome (unless the supplied `CancellationToken` is cancelled).
+- `EetClientOptions.Validate()` performs local, offline checks (no network call): the endpoint is an absolute HTTPS URL, a signing certificate is configured and loadable with a private key and is currently valid, configured authority certificate files are loadable and certificates are currently valid, resend settings are consistent, and `HttpConnectionLifetime` is positive. It throws `EetValidationException` listing every problem found.
+- `EetClient.TestConnectionAsync()` sends a signed verification-mode copy of `EetClientOptions.ConnectionTestSale` to the configured endpoint. Set this template to your actual taxpayer, unit, point-of-sale, and authorization data; there are no built-in test identifiers. The template is not modified, and verification mode is always forced so no sale is registered. An acknowledgement or verification code `0` is success; other EET rejections are failures with `Response` preserved. Missing or invalid templates and transport, protocol, or signing failures produce a failed `EetConnectionTestResult`. Caller cancellation is propagated.
+
+The connection test validates the effective configuration before sending, using `HttpClient.BaseAddress` if the options omit an endpoint. `IsAcknowledgementTrustValidated` is true only after a signed acknowledgement passes the configured authority policy. Verification code `0` confirms verification success but does not test acknowledgement trust; its result explicitly reports this limitation. Authority certificates supplied by the application remain application-owned and can be reused.
 
 `EetClientOptions.RevocationMode` controls how the authority certificate chain is checked for revocation during acknowledgement signature validation (defaults to `X509RevocationMode.Online`, matching the .NET default). Set it to `X509RevocationMode.NoCheck` in offline/air-gapped environments where CRL/OCSP endpoints are unreachable, or `X509RevocationMode.Offline` to rely on a locally cached CRL.
 
@@ -130,6 +132,15 @@ var options = new EetClientOptions
     BaseAddress = "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
     SigningCertificatePath = @"C:\certs\playground.p12",
     SigningCertificatePassword = "changeit",
+    ConnectionTestSale = new RegisteredSale
+    {
+        Eic = "CZ8551015704",
+        UnitId = 181,
+        PosId = "00/2535/CN58",
+        TransactionNumber = "connection-test",
+        TransactionTime = DateTimeOffset.Now,
+        TotalAmount = 1.00m
+    },
     UseSystemCertificateTrust = true
 };
 
@@ -321,8 +332,10 @@ options.OnDiagnosticEvent = e => logger.LogInformation("[{Kind}] {MessageId}: {M
 
 Dvě doplňující se kontroly pomáhají odhalit chyby konfigurace ještě před odesláním skutečných tržeb:
 
-- `EetClientOptions.Validate()` provádí lokální, offline kontroly (bez síťového volání): endpoint je absolutní HTTPS URL, podpisový certifikát je nastaven, načtitelný s privátním klíčem a aktuálně platný, případné připnuté cesty k certifikátům autority existují, nastavení opakovaného odesílání je konzistentní a `HttpConnectionLifetime` je kladné. Vyhazuje `EetValidationException` se seznamem všech nalezených problémů.
-- `EetClient.TestConnectionAsync()` provádí skutečný síťový round-trip: odešle podepsanou zprávu v ověřovacím režimu (`RegisteredSale.VerificationMode = true`, kterou služba EET nikdy nezaeviduje) na nakonfigurovaný endpoint a vrátí `EetConnectionTestResult`. Tím se kromě podepisování ověří i důvěryhodnost TLS/certifikátu a dostupnost endpointu. Jak úspěšné potvrzení, tak zamítnutí na úrovni EET se počítají jako úspěch, protože obojí znamená, že požadavek dorazil ke službě a byl zpracován; jako neúspěch se hlásí pouze chyby na úrovni transportu, protokolu nebo podpisu. `TestConnectionAsync` u těchto očekávaných způsobů selhání - včetně neočekávaných HTTP nebo transportních chyb - nikdy nevyhazuje výjimku a vždy vrátí `EetConnectionTestResult` popisující výsledek (pokud není zrušen předaný `CancellationToken`).
+- `EetClientOptions.Validate()` provádí lokální, offline kontroly (bez síťového volání): endpoint je absolutní HTTPS URL, podpisový certifikát je nastaven, načtitelný s privátním klíčem a aktuálně platný, nakonfigurované soubory certifikátů autority jsou načtitelné a certifikáty aktuálně platné, nastavení opakovaného odesílání je konzistentní a `HttpConnectionLifetime` je kladné. Vyhazuje `EetValidationException` se seznamem všech nalezených problémů.
+- `EetClient.TestConnectionAsync()` odešle podepsanou kopii `EetClientOptions.ConnectionTestSale` v ověřovacím režimu na nakonfigurovaný endpoint. Nastavte skutečné údaje poplatníka, jednotky, pokladny a pověření; přednastavené testovací identifikátory se nepoužívají. Šablona se nemění a ověřovací režim je vždy vynucen, takže se tržba nezaeviduje. Potvrzení nebo ověřovací kód `0` znamená úspěch; ostatní zamítnutí znamenají neúspěch se zachovanou `Response`. Chybějící či neplatná šablona a chyby transportu, protokolu nebo podpisu vrací neúspěšný `EetConnectionTestResult`. Zrušení volajícím se propaguje.
+
+Test připojení před odesláním validuje skutečnou konfiguraci; pokud endpoint není v options, použije `HttpClient.BaseAddress`. `IsAcknowledgementTrustValidated` je true pouze po ověření podepsaného potvrzení podle nastavené politiky autority. Ověřovací kód `0` znamená úspěšné ověření, ale netestuje důvěryhodnost potvrzení; výsledek toto omezení výslovně uvádí. Certifikáty autority dodané aplikací zůstávají ve vlastnictví aplikace a lze je znovu použít.
 
 `EetClientOptions.RevocationMode` řídí, jak se při ověřování podpisu potvrzení kontroluje odvolání certifikátu v řetězu certifikační autority (výchozí hodnota `X509RevocationMode.Online`, stejně jako výchozí chování .NET). V offline/izolovaných prostředích, kde nejsou dostupné CRL/OCSP endpointy, nastavte `X509RevocationMode.NoCheck`, nebo `X509RevocationMode.Offline` pro spolehnutí se na lokálně uloženou CRL.
 
@@ -332,6 +345,15 @@ var options = new EetClientOptions
     BaseAddress = "https://pg.trzbyeet.gov.cz:443/eet/services/EETServiceSOAP/v4",
     SigningCertificatePath = @"C:\certs\playground.p12",
     SigningCertificatePassword = "changeit",
+    ConnectionTestSale = new RegisteredSale
+    {
+        Eic = "CZ8551015704",
+        UnitId = 181,
+        PosId = "00/2535/CN58",
+        TransactionNumber = "connection-test",
+        TransactionTime = DateTimeOffset.Now,
+        TotalAmount = 1.00m
+    },
     UseSystemCertificateTrust = true
 };
 
