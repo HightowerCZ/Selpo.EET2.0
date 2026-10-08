@@ -1,13 +1,22 @@
-# Selpo.EET2.0
+# Selpo.EET2.0 - EET 2.0 client for .NET and C#
 
 **🇬🇧 [English](#english) | 🇨🇿 [Čeština](#čeština)**
 
 <a id="english"></a>
 ## English
 
-`Selpo.EET2.0` is a .NET connector for integrating applications with the Czech Ministry of Finance EET 2.0 service.
+`Selpo.EET2.0` is an EET 2.0 client library for .NET and C#. It integrates applications with the Czech Ministry of Finance electronic sales registration service (elektronická evidence tržeb) using SOAP/XML, WS-Security, XMLDSig and PKCS#12 certificates.
 
 The package targets .NET Standard 2.0, .NET Framework 4.8.1, and .NET 10.
+
+### Features
+
+- EET 2.0 data interface 4.1 ([WSDL/XSD contract](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol)).
+- SOAP 1.1 over HTTPS with WS-Security and XMLDSig message signing.
+- PKCS#12 (`.p12` / `.pfx`) signing certificates.
+- EET 2.0 playground and production endpoints.
+- POK acknowledgement handling, including authority signature validation, errors and warnings.
+- Verification-mode connection testing and opt-in automatic resend for temporary EET errors.
 
 ### Target framework
 
@@ -17,11 +26,15 @@ The package targets .NET Standard 2.0, .NET Framework 4.8.1, and .NET 10.
 
 ### Installation
 
+Install [Selpo.EET2.0 from NuGet](https://www.nuget.org/packages/Selpo.EET2.0):
+
 ```bash
 dotnet add package Selpo.EET2.0
 ```
 
-### Example
+### Quick start
+
+Use a signing certificate and taxpayer/unit identifiers issued for the chosen environment. The example below uses the EET 2.0 playground; replace the certificate path and password with your own playground credentials. A playground POK is a test acknowledgement, not a legal production acknowledgement.
 
 ```csharp
 using Selpo.Eet20;
@@ -59,7 +72,7 @@ switch (response)
 ```
 
 The full WSDL/XSD contract for both environments is available under [`docs/protocol`](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
-- See the bilingual [usage and API reference](docs/usage.md) for all public properties, response types, callbacks, and exceptions.
+- See the bilingual [usage and API reference](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/docs/usage.md) for all public properties, response types, callbacks, and exceptions.
 - `SigningCertificate`/`SigningCertificatePath` provide the certificate used to sign the message; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (or their `X509Certificate2` equivalents) can be used to pin the authority's certificates instead of relying on `UseSystemCertificateTrust`.
 - `RegisterSaleAsync` throws `EetValidationException` for invalid input, `EetProtocolException` for SOAP fault responses, and `EetTransportException` for network-level failures.
 - Timeout overloads are available for both endpoints: `RegisterSaleAsync(sale, timeout, cancellationToken)` and `TestConnectionAsync(timeout, cancellationToken)`.
@@ -217,10 +230,18 @@ This project is licensed under the MIT License. See [LICENSE](https://github.com
 <a id="čeština"></a>
 ## Čeština
 
-`Selpo.EET2.0` je .NET konektor pro integraci aplikací se službou EET 2.0 (Elektronická evidence tržeb) Ministerstva financí ČR.
+`Selpo.EET2.0` je klientská knihovna EET 2.0 pro .NET a C#. Integruje aplikace se službou elektronické evidence tržeb Ministerstva financí ČR pomocí SOAP/XML, WS-Security, XMLDSig a certifikátů PKCS#12.
 
 Balíček cílí na .NET Standard 2.0, .NET Framework 4.8.1 a .NET 10.
 
+### Funkce
+
+- Datové rozhraní EET 2.0 verze 4.1 ([kontrakt WSDL/XSD](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol)).
+- SOAP 1.1 přes HTTPS s podepisováním zpráv pomocí WS-Security a XMLDSig.
+- Podpisové certifikáty PKCS#12 (`.p12` / `.pfx`).
+- Testovací (playground) a produkční endpointy EET 2.0.
+- Zpracování potvrzení POK včetně ověření podpisu autority, chyb a varování.
+- Testování spojení v ověřovacím režimu a volitelné automatické opakování při dočasných chybách EET.
 
 ### Cílová platforma
 
@@ -230,11 +251,15 @@ Balíček cílí na .NET Standard 2.0, .NET Framework 4.8.1 a .NET 10.
 
 ### Instalace
 
+Nainstalujte [Selpo.EET2.0 z NuGetu](https://www.nuget.org/packages/Selpo.EET2.0):
+
 ```bash
 dotnet add package Selpo.EET2.0
 ```
 
 ### Příklad použití
+
+Použijte podpisový certifikát a identifikátory poplatníka a provozovny vydané pro zvolené prostředí. Následující příklad používá EET 2.0 playground; cestu k certifikátu a heslo nahraďte vlastními testovacími údaji. POK z playgroundu je testovací potvrzení, nikoli platné produkční potvrzení.
 
 ```csharp
 using Selpo.Eet20;
@@ -272,7 +297,7 @@ switch (response)
 ```
 
 Kompletní WSDL/XSD kontrakt pro obě prostředí je dostupný ve složce [`docs/protocol`](https://github.com/HightowerCZ/Selpo.EET2.0/tree/main/docs/protocol) (`EETServiceSOAP.wsdl`, `EETXMLSchema.xsd`).
-- Podrobný dvojjazyčný [popis použití a API](docs/usage.md) vysvětluje všechny veřejné vlastnosti, typy odpovědí, callbacky a výjimky.
+- Podrobný dvojjazyčný [popis použití a API](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/docs/usage.md) vysvětluje všechny veřejné vlastnosti, typy odpovědí, callbacky a výjimky.
 - `SigningCertificate`/`SigningCertificatePath` slouží k zadání certifikátu, kterým se zpráva podepisuje; `AuthorityRootCertificatePath`/`AuthorityIntermediateCertificatePath` (nebo jejich ekvivalenty typu `X509Certificate2`) lze použít k připnutí certifikátů autority místo spoléhání se na `UseSystemCertificateTrust`.
 - `RegisterSaleAsync` vyhazuje `EetValidationException` při neplatném vstupu, `EetProtocolException` při SOAP fault odpovědi a `EetTransportException` při chybách na úrovni síťového přenosu.
 - Pro oba endpointy jsou dostupné overloady s timeoutem: `RegisterSaleAsync(sale, timeout, cancellationToken)` a `TestConnectionAsync(timeout, cancellationToken)`.
@@ -424,4 +449,3 @@ Našli jste chybu nebo máte návrh na novou funkci? [Založte prosím issue na 
 ### Licence
 
 Tento projekt je licencován pod MIT licencí. Viz [LICENSE](https://github.com/HightowerCZ/Selpo.EET2.0/blob/main/LICENSE).
-

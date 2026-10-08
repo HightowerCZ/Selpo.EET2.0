@@ -9,11 +9,11 @@
     <RootNamespace>Selpo.Eet20</RootNamespace>
 
     <PackageId>Selpo.EET2.0</PackageId>
-    <Title>Selpo EET 2.0 Connector</Title>
+    <Title>Selpo.EET2.0 - EET 2.0 client for .NET and C#</Title>
     <VersionPrefix>0.1.0</VersionPrefix>
-    <Authors>j.cermoch</Authors>
-    <Description>Selpo.EET2.0 is a .NET connector for integrating applications with the Czech Ministry of Finance EET 2.0 service.</Description>
-    <PackageTags>eet eet2.0 czech-republic ministry-of-finance fiskalization fiscalization connector</PackageTags>
+    <Authors>Jakub Cermoch</Authors>
+    <Description>EET 2.0 client library for .NET and C#. Czech electronic sales registration (elektronická evidence tržeb) using SOAP/XML, WS-Security, XMLDSig and PKCS#12 certificates. Supports data interface 4.1, playground and production endpoints, and POK response handling.</Description>
+    <PackageTags>eet eet2 eet2.0 eet-2-0 csharp dotnet elektronicka-evidence-trzeb electronic-sales-registration czech-fiscalization fiscalization czech-republic ministry-of-finance pos receipt cash-register soap xml ws-security xmldsig pkcs12 connector</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/HightowerCZ/Selpo.EET2.0</PackageProjectUrl>
     <RepositoryUrl>https://github.com/HightowerCZ/Selpo.EET2.0</RepositoryUrl>
