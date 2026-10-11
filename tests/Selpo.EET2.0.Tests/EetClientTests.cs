@@ -146,12 +146,64 @@ public sealed class EetClientTests
         Assert.Equal(HttpStatusCode.InternalServerError, exception.StatusCode);
         Assert.Equal("452ba7806a71df6100036b61", exception.GlobalTransactionId);
         Assert.Equal("Internal error", exception.ResponseBody);
+        Assert.NotNull(exception.RequestXml);
+        Assert.Contains("<Signature", exception.RequestXml);
+        Assert.Equal(exception.ResponseBody, exception.ResponseXml);
+    }
+
+    [Fact]
+    public async Task RegisterSaleAsync_includes_request_and_response_xml_in_protocol_exception()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        const string responseXml = "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body><soap:Fault><faultstring>Invalid request</faultstring></soap:Fault></soap:Body></soap:Envelope>";
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseXml, System.Text.Encoding.UTF8, "text/xml")
+        }));
+
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate
+        });
+
+        var exception = await Assert.ThrowsAsync<EetProtocolException>(() => client.RegisterSaleAsync(CreateSale()));
+
+        Assert.NotNull(exception.RequestXml);
+        Assert.Contains("<Signature", exception.RequestXml);
+        Assert.Equal(responseXml, exception.ResponseXml);
+        Assert.Contains("Invalid request", exception.Message);
+    }
+
+    [Fact]
+    public async Task RegisterSaleAsync_includes_request_and_malformed_response_xml_in_protocol_exception()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        const string responseXml = "<soap:Envelope><soap:Body>";
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseXml, System.Text.Encoding.UTF8, "text/xml")
+        }));
+
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate
+        });
+
+        var exception = await Assert.ThrowsAsync<EetProtocolException>(() => client.RegisterSaleAsync(CreateSale()));
+
+        Assert.IsType<System.Xml.XmlException>(exception.InnerException);
+        Assert.NotNull(exception.RequestXml);
+        Assert.Contains("<Signature", exception.RequestXml);
+        Assert.Equal(responseXml, exception.ResponseXml);
     }
 
     [Fact]
     public async Task RegisterSaleAsync_times_out_when_timeout_is_reached()
     {
         using var certificate = CreateSelfSignedCertificate();
+        var events = new List<EetDiagnosticEvent>();
         using var httpClient = new HttpClient(new StubHttpMessageHandler(async (_, cancellationToken) =>
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
@@ -161,10 +213,172 @@ public sealed class EetClientTests
         using var client = new EetClient(httpClient, new EetClientOptions
         {
             BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            OnDiagnosticEvent = events.Add
+        });
+
+        var exception = await Assert.ThrowsAsync<TimeoutException>(() => client.RegisterSaleAsync(CreateSale(), TimeSpan.FromMilliseconds(50)));
+        Assert.NotNull(exception.GetRequestXml());
+        Assert.Null(exception.GetResponseXml());
+        Assert.IsAssignableFrom<OperationCanceledException>(exception.InnerException);
+        var failed = Assert.Single(events, e => e.Kind == EetDiagnosticEventKind.Failed);
+        Assert.Same(exception, failed.Exception);
+        Assert.Equal(exception.GetRequestXml(), failed.RequestXml);
+        Assert.Null(failed.ResponseXml);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RegisterSaleAsync_preserves_network_and_cancellation_exceptions_with_xml(bool cancel)
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var cancellation = new CancellationTokenSource();
+        Exception original = cancel
+            ? new OperationCanceledException(cancellation.Token)
+            : new HttpRequestException("Network failure");
+        string? sentXml = null;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(async (request, _) =>
+        {
+            sentXml = await request.Content!.ReadAsStringAsync();
+            if (cancel) cancellation.Cancel();
+            throw original;
+        }));
+        var events = new List<EetDiagnosticEvent>();
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            OnDiagnosticEvent = events.Add
+        });
+
+        var exception = await Record.ExceptionAsync(() => client.RegisterSaleAsync(CreateSale(), cancellation.Token));
+
+        if (cancel) Assert.IsAssignableFrom<OperationCanceledException>(exception);
+        else Assert.Same(original, exception);
+        Assert.NotNull(sentXml);
+        Assert.Equal(sentXml, exception!.GetRequestXml());
+        Assert.Null(exception.GetResponseXml());
+        var failed = Assert.Single(events, e => e.Kind == EetDiagnosticEventKind.Failed);
+        Assert.Same(exception, failed.Exception);
+        Assert.Equal(sentXml, failed.RequestXml);
+        Assert.Null(failed.ResponseXml);
+    }
+
+    [Fact]
+    public async Task RegisterSaleAsync_preserves_HttpClient_timeout_type_and_request_xml()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(async (_, token) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return CreateErrorResponse(2);
+        }))
+        {
+            Timeout = TimeSpan.FromMilliseconds(50)
+        };
+        var events = new List<EetDiagnosticEvent>();
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            OnDiagnosticEvent = events.Add
+        });
+
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.RegisterSaleAsync(CreateSale()));
+
+        Assert.NotNull(exception.GetRequestXml());
+        Assert.Null(exception.GetResponseXml());
+        var failed = Assert.Single(events, e => e.Kind == EetDiagnosticEventKind.Failed);
+        Assert.Same(exception, failed.Exception);
+        Assert.Equal(exception.GetRequestXml(), failed.RequestXml);
+    }
+
+    [Fact]
+    public async Task TestConnectionAsync_preserves_request_xml_on_network_failure()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        var original = new HttpRequestException("Network failure");
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => throw original));
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = certificate,
+            ConnectionTestSale = CreateSale()
+        });
+
+        var result = await client.TestConnectionAsync();
+
+        Assert.False(result.IsSuccess);
+        var exception = Assert.IsType<HttpRequestException>(result.Exception);
+        Assert.Same(original, exception);
+        Assert.NotNull(exception.GetRequestXml());
+        Assert.Null(exception.GetResponseXml());
+    }
+
+    [Fact]
+    public async Task RegisterSaleAsync_preserves_non_protocol_parser_exception_with_response_xml()
+    {
+        using var certificate = CreateSelfSignedCertificate();
+        using var rawResponse = CreateErrorResponse(2);
+        var responseXml = (await rawResponse.Content.ReadAsStringAsync()).Replace("kod=\"2\"", "kod=\"invalid\"");
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseXml)
+        }));
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
             SigningCertificate = certificate
         });
 
-        await Assert.ThrowsAsync<TimeoutException>(() => client.RegisterSaleAsync(CreateSale(), TimeSpan.FromMilliseconds(50)));
+        var exception = await Assert.ThrowsAsync<FormatException>(() => client.RegisterSaleAsync(CreateSale()));
+
+        Assert.NotNull(exception.GetRequestXml());
+        Assert.Equal(responseXml, exception.GetResponseXml());
+    }
+
+    [Theory]
+    [InlineData("validation")]
+    [InlineData("certificate")]
+    [InlineData("signing")]
+    public async Task RegisterSaleAsync_reports_pre_send_failures_without_fabricating_xml(string failure)
+    {
+        using var certificate = CreateSelfSignedCertificate();
+#if NET10_0_OR_GREATER
+        using var publicCertificate = X509CertificateLoader.LoadCertificate(certificate.RawData);
+#else
+        using var publicCertificate = new X509Certificate2(certificate.RawData);
+#endif
+        var events = new List<EetDiagnosticEvent>();
+        var sent = false;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+        {
+            sent = true;
+            return CreateErrorResponse(2);
+        }));
+        using var client = new EetClient(httpClient, new EetClientOptions
+        {
+            BaseAddress = "https://eet.example.test/",
+            SigningCertificate = failure == "certificate" ? null : failure == "signing" ? publicCertificate : certificate,
+            OnDiagnosticEvent = events.Add
+        });
+        var sale = CreateSale();
+        if (failure == "validation") sale.Eic = "invalid";
+
+        var exception = await Record.ExceptionAsync(() => client.RegisterSaleAsync(sale));
+
+        Assert.NotNull(exception);
+        if (failure == "certificate") Assert.IsType<InvalidOperationException>(exception);
+        else Assert.IsType<EetValidationException>(exception);
+        Assert.False(sent);
+        Assert.Null(exception.GetRequestXml());
+        Assert.Null(exception.GetResponseXml());
+        var failed = Assert.Single(events);
+        Assert.Equal(EetDiagnosticEventKind.Failed, failed.Kind);
+        Assert.Same(exception, failed.Exception);
+        Assert.Null(failed.RequestXml);
+        Assert.Null(failed.ResponseXml);
     }
 
     [Fact]
@@ -690,7 +904,12 @@ public sealed class EetClientTests
     public async Task RegisterSaleAsync_raises_diagnostic_events_for_send_and_response()
     {
         using var certificate = CreateSelfSignedCertificate();
-        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ => CreateErrorResponse(2)));
+        string? sentRequestXml = null;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(async (request, _) =>
+        {
+            sentRequestXml = await request.Content!.ReadAsStringAsync();
+            return CreateErrorResponse(2);
+        }));
 
         var events = new List<EetDiagnosticEvent>();
         using var client = new EetClient(httpClient, new EetClientOptions
@@ -700,10 +919,18 @@ public sealed class EetClientTests
             OnDiagnosticEvent = events.Add
         });
 
-        await client.RegisterSaleAsync(CreateSale());
+        var result = Assert.IsType<EetErrorResponse>(await client.RegisterSaleAsync(CreateSale()));
 
-        Assert.Contains(events, e => e.Kind == EetDiagnosticEventKind.Sending);
-        Assert.Contains(events, e => e.Kind == EetDiagnosticEventKind.ResponseReceived);
+        var sending = Assert.Single(events, e => e.Kind == EetDiagnosticEventKind.Sending);
+        var received = Assert.Single(events, e => e.Kind == EetDiagnosticEventKind.ResponseReceived);
+        Assert.NotNull(sending.RequestXml);
+        Assert.Contains("<Signature", sending.RequestXml);
+        Assert.Equal(sentRequestXml, sending.RequestXml);
+        Assert.Equal(sending.RequestXml, received.RequestXml);
+        Assert.Contains("Chyba", received.ResponseXml);
+        Assert.Contains("Chyba zpracovani", received.ResponseXml);
+        Assert.Equal(sentRequestXml, result.RequestXml);
+        Assert.Equal(received.ResponseXml, result.ResponseXml);
     }
 
     [Fact]
@@ -726,7 +953,10 @@ public sealed class EetClientTests
 
         await Assert.ThrowsAsync<EetTransportException>(() => client.RegisterSaleAsync(CreateSale()));
 
-        Assert.Contains(events, e => e.Kind == EetDiagnosticEventKind.Failed && e.Exception is EetTransportException);
+        var failed = Assert.Single(events, e => e.Kind == EetDiagnosticEventKind.Failed);
+        Assert.IsType<EetTransportException>(failed.Exception);
+        Assert.NotNull(failed.RequestXml);
+        Assert.Equal("Unavailable", failed.ResponseXml);
     }
 
     [Fact]

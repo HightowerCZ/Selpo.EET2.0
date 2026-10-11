@@ -6,17 +6,28 @@ namespace Selpo.Eet20;
 /// <summary>Base type for an EET service response.</summary>
 public abstract class EetResponse
 {
-    internal EetResponse(string? globalTransactionId) => GlobalTransactionId = globalTransactionId;
+    internal EetResponse(string? globalTransactionId, string? requestXml, string responseXml)
+    {
+        GlobalTransactionId = globalTransactionId;
+        RequestXml = requestXml;
+        ResponseXml = responseXml;
+    }
 
     /// <summary>Gets the authority transaction identifier, when supplied.</summary>
     public string? GlobalTransactionId { get; }
+
+    /// <summary>Gets the signed SOAP request XML sent for this response, when available.</summary>
+    public string? RequestXml { get; }
+
+    /// <summary>Gets the raw SOAP response XML returned by the EET service.</summary>
+    public string ResponseXml { get; }
 }
 
 /// <summary>Successful acknowledgement returned by the EET service.</summary>
 public sealed class EetAcknowledgementResponse : EetResponse
 {
-    internal EetAcknowledgementResponse(Guid? messageId, DateTimeOffset? receivedAt, string pok, bool isTest, IReadOnlyList<EetWarning> warnings, string? globalTransactionId)
-        : base(globalTransactionId)
+    internal EetAcknowledgementResponse(Guid? messageId, DateTimeOffset? receivedAt, string pok, bool isTest, IReadOnlyList<EetWarning> warnings, string? globalTransactionId, string? requestXml, string responseXml)
+        : base(globalTransactionId, requestXml, responseXml)
     {
         MessageId = messageId;
         ReceivedAt = receivedAt;
@@ -40,8 +51,8 @@ public sealed class EetAcknowledgementResponse : EetResponse
 /// <summary>Error or verification result returned by the EET service.</summary>
 public sealed class EetErrorResponse : EetResponse
 {
-    internal EetErrorResponse(Guid? messageId, DateTimeOffset? rejectedAt, int errorCode, string errorMessage, bool isTest, IReadOnlyList<EetWarning> warnings, string? globalTransactionId)
-        : base(globalTransactionId)
+    internal EetErrorResponse(Guid? messageId, DateTimeOffset? rejectedAt, int errorCode, string errorMessage, bool isTest, IReadOnlyList<EetWarning> warnings, string? globalTransactionId, string? requestXml, string responseXml)
+        : base(globalTransactionId, requestXml, responseXml)
     {
         MessageId = messageId;
         RejectedAt = rejectedAt;

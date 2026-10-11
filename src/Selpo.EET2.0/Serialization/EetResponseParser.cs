@@ -8,11 +8,18 @@ namespace Selpo.Eet20.Serialization;
 
 internal static class EetResponseParser
 {
-    internal static EetResponse Parse(string envelopeXml, string? globalTransactionId, EetClientOptions options)
+    internal static EetResponse Parse(string envelopeXml, string? globalTransactionId, EetClientOptions options, string? requestXml = null)
     {
         if (envelopeXml == null) throw new ArgumentNullException(nameof(envelopeXml));
         var document = new XmlDocument { PreserveWhitespace = true };
-        document.LoadXml(envelopeXml);
+        try
+        {
+            document.LoadXml(envelopeXml);
+        }
+        catch (XmlException exception)
+        {
+            throw new EetProtocolException("The EET service returned malformed XML.", exception, requestXml, envelopeXml);
+        }
         var body = document.GetElementsByTagName("Body", EetSoapEnvelopeBuilder.SoapNamespace).Item(0) as XmlElement
             ?? throw new EetProtocolException("The response does not contain a SOAP body.");
         var fault = FindChild(body, "Fault");
@@ -27,12 +34,12 @@ internal static class EetResponseParser
         {
             EetMessageSignatureValidator.ValidateAcknowledgement(envelopeXml, options);
             var pok = GetRequiredAttribute(acknowledgement, "pok");
-            return new EetAcknowledgementResponse(messageId, ParseDateTime(GetAttribute(header, "dat_prij")), pok, ParseBoolean(acknowledgement, "test"), warnings, globalTransactionId);
+            return new EetAcknowledgementResponse(messageId, ParseDateTime(GetAttribute(header, "dat_prij")), pok, ParseBoolean(acknowledgement, "test"), warnings, globalTransactionId, requestXml, envelopeXml);
         }
 
         var error = FindChild(response, "Chyba") ?? throw new EetProtocolException("The response contains neither acknowledgement nor error data.");
         var code = int.Parse(GetRequiredAttribute(error, "kod"), CultureInfo.InvariantCulture);
-        return new EetErrorResponse(messageId, ParseDateTime(GetAttribute(header, "dat_odmit")), code, error.InnerText.Trim(), ParseBoolean(error, "test"), warnings, globalTransactionId);
+        return new EetErrorResponse(messageId, ParseDateTime(GetAttribute(header, "dat_odmit")), code, error.InnerText.Trim(), ParseBoolean(error, "test"), warnings, globalTransactionId, requestXml, envelopeXml);
     }
 
     private static IReadOnlyList<EetWarning> ParseWarnings(XmlElement response)
