@@ -83,6 +83,24 @@ public sealed class EetResponseParserTests
     }
 
     [Fact]
+    public void Rejects_malformed_xml_and_preserves_request_and_response_xml()
+    {
+        const string malformedXml = "<soap:Envelope><soap:Body>";
+        const string requestXml = "<signed-request />";
+
+        var exception = Assert.Throws<EetProtocolException>(() => EetResponseParser.Parse(
+            malformedXml,
+            null,
+            new EetClientOptions(),
+            requestXml));
+
+        Assert.IsType<System.Xml.XmlException>(exception.InnerException);
+        Assert.Equal(requestXml, exception.RequestXml);
+        Assert.Equal(malformedXml, exception.ResponseXml);
+        Assert.Contains("malformed XML", exception.Message);
+    }
+
+    [Fact]
     public void Rejects_response_without_soap_body()
     {
         var exception = Assert.Throws<EetProtocolException>(() => EetResponseParser.Parse(

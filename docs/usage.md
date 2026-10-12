@@ -167,13 +167,30 @@ Automatic resend applies only to EET error code `-1`. The configured delay list 
 - `ResendScheduled`: error `-1` scheduled another attempt.
 - `Failed`: transport, protocol, signing, or another send failure occurred.
 
-`EetDiagnosticEvent` provides `Kind`, a human-readable `Message`, the related `MessageId`, and an `Exception` for failure events.
+`EetDiagnosticEvent` provides `Kind`, a human-readable `Message`, the related `MessageId`, and an `Exception` for failure events. `RequestXml` contains the signed SOAP request, while `ResponseXml` contains the raw SOAP response when available, including HTTP error responses on `Failed` events. Either is null when it was not available.
+
+```csharp
+using System;
+using System.IO;
+using System.Text;
+
+var response = await client.RegisterSaleAsync(sale);
+var xmlDirectory = Path.Combine(AppContext.BaseDirectory, "eet-xml");
+Directory.CreateDirectory(xmlDirectory);
+var fileId = Guid.NewGuid().ToString("N");
+
+if (response.RequestXml is not null)
+    File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-request.xml"), response.RequestXml, new UTF8Encoding(false));
+File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-response.xml"), response.ResponseXml, new UTF8Encoding(false));
+```
+
+`EetResponse.RequestXml` and `EetResponse.ResponseXml` let you save the exact exchange after `RegisterSaleAsync` returns. This writes readable UTF-8 plaintext files. The request is digitally signed, not encrypted; save it verbatim rather than reformatting so the signed XML remains unchanged. The XML may contain taxpayer and transaction data; protect the output directory appropriately. For any exception, use `exception.GetRequestXml()` and `exception.GetResponseXml()` (namespace `Selpo.Eet20`). These work with the typed EET exceptions and with captured XML on existing network, cancellation, signing, validation, and timeout exceptions. The helpers return null for XML that was never generated or received. Per-attempt timeouts now raise `Failed` diagnostics and retain the original cancellation exception as their inner exception. Failed connection tests expose the same data through `EetConnectionTestResult.Exception`.
 
 ### Exceptions
 
 - `EetValidationException`: local input or configuration is invalid.
-- `EetProtocolException`: the response is not a valid EET/SOAP protocol response or contains a SOAP fault.
-- `EetTransportException`: the HTTP request returned a non-success status. Its `StatusCode`, raw `ResponseBody`, and optional `GlobalTransactionId` are available for troubleshooting.
+- `EetProtocolException`: the response is not a valid EET/SOAP protocol response or contains a SOAP fault. `RequestXml` and `ResponseXml` contain the exchange when available.
+- `EetTransportException`: the HTTP request returned a non-success status. Its `StatusCode`, raw `ResponseBody` / `ResponseXml`, `RequestXml`, and optional `GlobalTransactionId` are available for troubleshooting.
 
 ### Protocol reference
 
@@ -346,13 +363,30 @@ Automaticke opakovani se tyka pouze chyby EET `-1`. Seznam prodlev urcuje pocet 
 - `ResendScheduled`: chyba `-1` naplanovala dalsi pokus.
 - `Failed`: nastala transportni, protokolova, podpisova nebo jina chyba odeslani.
 
-`EetDiagnosticEvent` poskytuje `Kind`, lidsky citelny `Message`, souvisejici `MessageId` a u udalosti selhani `Exception`.
+`EetDiagnosticEvent` poskytuje `Kind`, lidsky citelny `Message`, souvisejici `MessageId` a u udalosti selhani `Exception`. `RequestXml` obsahuje podepsanou SOAP zadost a `ResponseXml` surovou SOAP odpoved, pokud je dostupna, vcetne HTTP chybovych odpovedi u udalosti `Failed`. Pokud nebyla zadost nebo odpoved k dispozici, hodnota je `null`.
+
+```csharp
+using System;
+using System.IO;
+using System.Text;
+
+var response = await client.RegisterSaleAsync(sale);
+var xmlDirectory = Path.Combine(AppContext.BaseDirectory, "eet-xml");
+Directory.CreateDirectory(xmlDirectory);
+var fileId = Guid.NewGuid().ToString("N");
+
+if (response.RequestXml is not null)
+    File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-request.xml"), response.RequestXml, new UTF8Encoding(false));
+File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-response.xml"), response.ResponseXml, new UTF8Encoding(false));
+```
+
+`EetResponse.RequestXml` a `EetResponse.ResponseXml` umoznuji ulozit presnou vymenu po navratu `RegisterSaleAsync`. Soubory jsou citelny prosty text v UTF-8. Pozadavek je digitalne podepsany, nikoli sifrovany; ukladejte jej beze zmeny, aby formatovani nezmenilo podepsane XML. XML muze obsahovat udaje o poplatnikovi a transakci, proto vystupni slozku odpovidajicim zpusobem zabezpecte. U jakekoli vyjimky pouzijte `exception.GetRequestXml()` a `exception.GetResponseXml()` z namespace `Selpo.Eet20`. Typy sitovych, validacnich, podpisovych a rusicich vyjimek zustavaji zachovany. Timeout jednoho pokusu zustava `TimeoutException` a vyvola udalost `Failed`. Pokud XML nebylo vytvoreno nebo prijato, hodnota je null. Stejne metody lze pouzit na `EetConnectionTestResult.Exception`.
 
 ### Vyjimky
 
 - `EetValidationException`: lokalni vstup nebo konfigurace nejsou platne.
-- `EetProtocolException`: odpoved neni platnou odpovedi EET/SOAP nebo obsahuje SOAP fault.
-- `EetTransportException`: HTTP pozadavek vratil neuspesny stav. K dispozici jsou `StatusCode`, surove telo `ResponseBody` a pripadny `GlobalTransactionId`.
+- `EetProtocolException`: odpoved neni platnou odpovedi EET/SOAP nebo obsahuje SOAP fault. `RequestXml` a `ResponseXml` obsahuji vymenu, pokud je dostupna.
+- `EetTransportException`: HTTP pozadavek vratil neuspesny stav. K dispozici jsou `StatusCode`, surove telo `ResponseBody` / `ResponseXml`, `RequestXml` a pripadny `GlobalTransactionId`.
 
 ### Odkaz na protokol
 

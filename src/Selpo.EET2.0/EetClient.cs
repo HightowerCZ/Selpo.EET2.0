@@ -216,56 +216,88 @@ public sealed class EetClient : IDisposable
 
     private async Task<EetResponse> SendOnceAsync(RegisteredSale sale, EetClientOptions options, TimeSpan? timeout, CancellationToken cancellationToken)
     {
-        var endpoint = ResolveEndpoint(options);
-        var body = EetMessageSerializer.SerializeRegisteredSale(sale);
-        var envelope = EetSoapEnvelopeBuilder.Build(body, "id-" + Guid.NewGuid().ToString("N"));
-        var certificate = ResolveCertificate(options, out var ownsCertificate);
+        Uri? endpoint = null;
+        X509Certificate2? certificate = null;
+        var ownsCertificate = false;
+        string? signedEnvelope = null;
+        string? responseXml = null;
         CancellationTokenSource? timeoutSource = null;
         CancellationTokenSource? linkedSource = null;
         var effectiveCancellationToken = cancellationToken;
 
-        var timeoutValue = timeout;
-        if (timeoutValue.HasValue)
-        {
-            timeoutSource = new CancellationTokenSource(timeoutValue.Value);
-            if (cancellationToken.CanBeCanceled)
-            {
-                linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
-                effectiveCancellationToken = linkedSource.Token;
-            }
-            else
-            {
-                effectiveCancellationToken = timeoutSource.Token;
-            }
-        }
-
-        options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(EetDiagnosticEventKind.Sending, $"Sending registered sale to {endpoint}.", sale.MessageId));
         try
         {
-            var signedEnvelope = EetMessageSigner.Sign(envelope, certificate);
+            endpoint = ResolveEndpoint(options);
+            var body = EetMessageSerializer.SerializeRegisteredSale(sale);
+            var envelope = EetSoapEnvelopeBuilder.Build(body, "id-" + Guid.NewGuid().ToString("N"));
+            certificate = ResolveCertificate(options, out ownsCertificate);
+            if (timeout.HasValue)
+            {
+                timeoutSource = new CancellationTokenSource(timeout.Value);
+                if (cancellationToken.CanBeCanceled)
+                {
+                    linkedSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
+                    effectiveCancellationToken = linkedSource.Token;
+                }
+                else
+                {
+                    effectiveCancellationToken = timeoutSource.Token;
+                }
+            }
+
+            signedEnvelope = EetMessageSigner.Sign(envelope, certificate);
             if (System.Text.Encoding.UTF8.GetByteCount(signedEnvelope) > 12 * 1024)
                 throw new EetValidationException("The SOAP message exceeds the EET 12 kB limit.");
 
+            options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(
+                EetDiagnosticEventKind.Sending,
+                $"Sending registered sale to {endpoint}.",
+                sale.MessageId,
+                requestXml: signedEnvelope));
             var transport = new EetSoapTransport(_httpClient, endpoint);
             var response = await transport.SendAsync(signedEnvelope, effectiveCancellationToken).ConfigureAwait(false);
-            var parsed = EetResponseParser.Parse(response.Body, response.GlobalTransactionId, options);
-            options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(EetDiagnosticEventKind.ResponseReceived, DescribeResponse(parsed), sale.MessageId));
+            responseXml = response.Body;
+            var parsed = EetResponseParser.Parse(responseXml, response.GlobalTransactionId, options, signedEnvelope);
+            options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(
+                EetDiagnosticEventKind.ResponseReceived,
+                DescribeResponse(parsed),
+                sale.MessageId,
+                requestXml: signedEnvelope,
+                responseXml: responseXml));
             return parsed;
-        }
-        catch (OperationCanceledException) when (timeoutSource is not null && timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException($"The request to '{endpoint}' timed out after {timeoutValue!.Value}.");
         }
         catch (Exception exception)
         {
-            options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(EetDiagnosticEventKind.Failed, $"Sending the registered sale failed: {exception.Message}", sale.MessageId, exception));
+            var reportedException = exception;
+            if (exception is OperationCanceledException && timeoutSource is not null
+                && timeoutSource.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                reportedException = new TimeoutException($"The request to '{endpoint}' timed out after {timeout!.Value}.", exception);
+            else if (exception is EetTransportException transportException)
+                responseXml = transportException.ResponseBody;
+            else if (exception is EetProtocolException protocolException
+                && (protocolException.RequestXml is null || protocolException.ResponseXml is null))
+                reportedException = new EetProtocolException(
+                    protocolException.Message,
+                    protocolException,
+                    protocolException.RequestXml ?? signedEnvelope,
+                    protocolException.ResponseXml ?? responseXml);
+            EetExceptionExtensions.AttachXml(reportedException, signedEnvelope, responseXml);
+            options.OnDiagnosticEvent?.Invoke(new EetDiagnosticEvent(
+                EetDiagnosticEventKind.Failed,
+                $"Sending the registered sale failed: {reportedException.Message}",
+                sale.MessageId,
+                reportedException,
+                signedEnvelope,
+                responseXml));
+            if (!ReferenceEquals(reportedException, exception))
+                throw reportedException;
             throw;
         }
         finally
         {
             linkedSource?.Dispose();
             timeoutSource?.Dispose();
-            if (ownsCertificate) certificate.Dispose();
+            if (ownsCertificate) certificate?.Dispose();
         }
     }
 

@@ -36,7 +36,7 @@ internal sealed class EetSoapTransport
         response.Headers.TryGetValues("X-Global-Transaction-Id", out var transactionIds);
         var transactionId = transactionIds == null ? null : System.Linq.Enumerable.FirstOrDefault(transactionIds);
         if (!response.IsSuccessStatusCode)
-            throw new EetTransportException(response.StatusCode, body, transactionId);
+            throw new EetTransportException(response.StatusCode, body, transactionId, envelopeXml);
         return new EetTransportResponse(response.StatusCode, body, transactionId);
     }
 }

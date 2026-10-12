@@ -123,10 +123,39 @@ using var client = new EetClient(new EetClientOptions
 - `ResponseReceived` - a message was acknowledged or rejected at the EET protocol level.
 - `ResendScheduled` - a temporary error (code `-1`) caused an automatic resend to be scheduled.
 - `Failed` - the operation failed with a transport, protocol, or signing exception; `EetDiagnosticEvent.Exception` carries the failure.
+- `RequestXml` contains the signed SOAP request, and `ResponseXml` contains the raw SOAP response when available (including HTTP error responses on `Failed` events). The fields are null when that request or response was not available.
 
 ```csharp
-options.OnDiagnosticEvent = e => logger.LogInformation("[{Kind}] {MessageId}: {Message}", e.Kind, e.MessageId, e.Message);
+using System;
+using System.IO;
+using System.Text;
+
+var response = await client.RegisterSaleAsync(sale);
+var xmlDirectory = Path.Combine(AppContext.BaseDirectory, "eet-xml");
+Directory.CreateDirectory(xmlDirectory);
+var fileId = Guid.NewGuid().ToString("N");
+
+if (response.RequestXml is not null)
+    File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-request.xml"), response.RequestXml, new UTF8Encoding(false));
+File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-response.xml"), response.ResponseXml, new UTF8Encoding(false));
 ```
+
+`EetResponse.RequestXml` and `EetResponse.ResponseXml` let you save the exact exchange after `RegisterSaleAsync` returns. The files are readable UTF-8 plaintext. The request is digitally signed, not encrypted; save it verbatim rather than reformatting so the signed XML remains unchanged. The XML can contain taxpayer and transaction data, so protect the output directory appropriately. `EetTransportException` and `EetProtocolException` also expose XML properties. For any exception, use the `GetRequestXml()` and `GetResponseXml()` extension methods (namespace `Selpo.Eet20`). The client attaches available XML without changing network, cancellation, signing, or validation exception types. A per-attempt timeout remains a `TimeoutException` and now raises a `Failed` diagnostic event. XML that was not generated or received is null, including local failures before signing.
+
+```csharp
+try
+{
+    var response = await client.RegisterSaleAsync(sale);
+    SaveExchange(response.RequestXml, response.ResponseXml);
+}
+catch (Exception ex)
+{
+    SaveExchange(ex.GetRequestXml(), ex.GetResponseXml());
+    throw;
+}
+```
+
+`SaveExchange` is your application's storage method and should accept nullable XML values. The same helpers work on `EetConnectionTestResult.Exception` when a connection test returns a failed result.
 
 ### Verifying configuration
 
@@ -348,10 +377,28 @@ using var client = new EetClient(new EetClientOptions
 - `ResponseReceived` - zpráva byla na úrovni protokolu EET úspěšně potvrzena nebo zamítnuta.
 - `ResendScheduled` - dočasná chyba (kód `-1`) vyvolala naplánování automatického opakovaného odeslání.
 - `Failed` - operace selhala s výjimkou na úrovni transportu, protokolu nebo podpisu; `EetDiagnosticEvent.Exception` obsahuje danou chybu.
+- `RequestXml` obsahuje podepsanou SOAP žádost a `ResponseXml` surovou SOAP odpověď, pokud je dostupná (včetně HTTP chybových odpovědí u událostí `Failed`). Pokud žádost nebo odpověď nebyla k dispozici, příslušná hodnota je `null`.
 
 ```csharp
 options.OnDiagnosticEvent = e => logger.LogInformation("[{Kind}] {MessageId}: {Message}", e.Kind, e.MessageId, e.Message);
 ```
+
+```csharp
+using System;
+using System.IO;
+using System.Text;
+
+var response = await client.RegisterSaleAsync(sale);
+var xmlDirectory = Path.Combine(AppContext.BaseDirectory, "eet-xml");
+Directory.CreateDirectory(xmlDirectory);
+var fileId = Guid.NewGuid().ToString("N");
+
+if (response.RequestXml is not null)
+    File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-request.xml"), response.RequestXml, new UTF8Encoding(false));
+File.WriteAllText(Path.Combine(xmlDirectory, $"{fileId}-response.xml"), response.ResponseXml, new UTF8Encoding(false));
+```
+
+`EetResponse.RequestXml` a `EetResponse.ResponseXml` umožňují uložit přesnou výměnu po návratu `RegisterSaleAsync`. Soubory jsou čitelný prostý text v UTF-8. Požadavek je digitálně podepsaný, nikoli šifrovaný; ukládejte jej beze změny, aby formátování nezměnilo podepsané XML. XML může obsahovat údaje o poplatníkovi a transakci, proto výstupní složku odpovídajícím způsobem chraňte. U jakékoli výjimky použijte rozšiřující metody `GetRequestXml()` a `GetResponseXml()` z namespace `Selpo.Eet20`. Typy síťových, validačních, podpisových a rušících výjimek zůstávají zachovány. Timeout jednoho pokusu zůstává `TimeoutException` a vyvolá událost `Failed`. Pokud XML nebylo vytvořeno nebo přijato, hodnota je null.
 
 ### Ověření konfigurace
 

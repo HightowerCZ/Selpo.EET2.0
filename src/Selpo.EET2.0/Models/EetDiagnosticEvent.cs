@@ -22,12 +22,20 @@ public enum EetDiagnosticEventKind
 /// </summary>
 public sealed class EetDiagnosticEvent
 {
-    internal EetDiagnosticEvent(EetDiagnosticEventKind kind, string message, Guid messageId, Exception? exception = null)
+    internal EetDiagnosticEvent(
+        EetDiagnosticEventKind kind,
+        string message,
+        Guid messageId,
+        Exception? exception = null,
+        string? requestXml = null,
+        string? responseXml = null)
     {
         Kind = kind;
         Message = message;
         MessageId = messageId;
         Exception = exception;
+        RequestXml = requestXml;
+        ResponseXml = responseXml;
     }
 
     /// <summary>Gets the category of the event.</summary>
@@ -41,4 +49,10 @@ public sealed class EetDiagnosticEvent
 
     /// <summary>Gets the exception associated with the event, when <see cref="Kind"/> is <see cref="EetDiagnosticEventKind.Failed"/>.</summary>
     public Exception? Exception { get; }
+
+    /// <summary>Gets the signed SOAP request XML when a request was prepared for sending.</summary>
+    public string? RequestXml { get; }
+
+    /// <summary>Gets the raw SOAP response XML when the service returned a response.</summary>
+    public string? ResponseXml { get; }
 }
